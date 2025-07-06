@@ -13,7 +13,10 @@ A modern take on the classic Pong game with multiple game modes, visual themes, 
   - Adds tactical depth to the classic formula
 
 ### Player Options
-- **1 Player**: Play against a moderate AI opponent
+- **1 Player**: Play against an AI opponent with three difficulty levels:
+  - **Easy**: Slow reflexes, poor prediction, rarely shoots lasers
+  - **Normal**: Balanced gameplay with moderate challenge
+  - **Hard**: Fast reflexes, good prediction, aggressive laser usage
 - **2 Players**: Classic local multiplayer experience
 
 ### Visual Themes
@@ -76,8 +79,11 @@ A modern take on the classic Pong game with multiple game modes, visual themes, 
 
 ### AI Implementation
 The AI opponent features:
-- Predictive ball tracking
-- Configurable difficulty parameters
+- Predictive ball tracking with difficulty-based accuracy
+- Three difficulty levels with unique parameters:
+  - **Easy**: 40% error rate, 40% speed, 0.5% laser chance
+  - **Normal**: 30% error rate, 50% speed, 1.5% laser chance  
+  - **Hard**: 15% error rate, 75% speed, 3% laser chance
 - Intentional errors for balanced gameplay
 - Reaction delays for human-like behavior
 - Laser shooting capability in Wars mode

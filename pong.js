@@ -1,6 +1,11 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+// Mobile detection
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                 (window.innerWidth <= 768);
+
+// Game constants
 const PADDLE_WIDTH = 10;
 const PADDLE_HEIGHT = 80;
 const BALL_SIZE = 10;
@@ -9,51 +14,109 @@ const INITIAL_BALL_SPEED = 5;
 const MAX_BALL_SPEED = 15;
 const WINNING_SCORE = 5;
 
+// Canvas sizing
+let gameScale = 1;
+const baseWidth = 800;
+const baseHeight = 400;
+
+function resizeCanvas() {
+    const maxWidth = window.innerWidth - 40; // Account for padding
+    const maxHeight = window.innerHeight - 200; // Account for UI elements
+    
+    // Calculate scale to fit screen while maintaining aspect ratio
+    const scaleX = maxWidth / baseWidth;
+    const scaleY = maxHeight / baseHeight;
+    gameScale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond original size
+    
+    canvas.width = baseWidth;
+    canvas.height = baseHeight;
+    canvas.style.width = (baseWidth * gameScale) + 'px';
+    canvas.style.height = (baseHeight * gameScale) + 'px';
+}
+
+// Call resize on load and window resize
+window.addEventListener('load', resizeCanvas);
+window.addEventListener('resize', resizeCanvas);
+
 let gameState = 'title';
 let player1Score = 0;
 let player2Score = 0;
 let currentTheme = localStorage.getItem('theme') || 'classic';
 let playerMode = localStorage.getItem('playerMode') || '1player';
 let gameMode = localStorage.getItem('gameMode') || 'pong';
+let aiDifficulty = localStorage.getItem('aiDifficulty') || 'normal';
+let particleEffects = localStorage.getItem('particleEffects') || (isMobile ? 'low' : 'high');
 
 // Title screen state
-let menuSelection = 0; // 0 = theme, 1 = mode, 2 = players
+let menuSelection = 0; // 0 = theme, 1 = mode, 2 = players, 3 = difficulty (1 player only), 4 = particles
 const menuOptions = {
     theme: ['classic', 'spatial'],
     mode: ['pong', 'wars'],
-    players: ['1player', '2player']
+    players: ['1player', '2player'],
+    difficulty: ['easy', 'normal', 'hard'],
+    particles: ['low', 'high']
 };
 
 // Title screen stars
 const titleStars = [];
-const NUM_TITLE_STARS = 300;
-for (let i = 0; i < NUM_TITLE_STARS; i++) {
-    titleStars.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        z: Math.random() * 1000,
-        speed: Math.random() * 0.5 + 0.1
-    });
-}
+let NUM_TITLE_STARS = particleEffects === 'high' ? 300 : 50;
 
-// AI settings
-const AI_REACTION_TIME = 20; // Higher = slower reaction
-const AI_ERROR_CHANCE = 0.25; // Chance AI makes a mistake
-const AI_PREDICTION_FRAMES = 5; // How far ahead AI predicts
+function createTitleStars() {
+    titleStars.length = 0;
+    NUM_TITLE_STARS = particleEffects === 'high' ? 300 : 50;
+    for (let i = 0; i < NUM_TITLE_STARS; i++) {
+        titleStars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            z: Math.random() * 1000,
+            speed: Math.random() * 0.5 + 0.1
+        });
+    }
+}
+createTitleStars();
+
+// AI difficulty configurations
+const AI_DIFFICULTIES = {
+    easy: {
+        reactionTime: 40,      // Very slow reflexes
+        errorChance: 0.40,     // 40% chance of mistakes
+        predictionFrames: 2,   // Poor prediction
+        speedMultiplier: 0.4,  // 40% of paddle speed
+        laserChance: 0.005     // 0.5% chance per frame
+    },
+    normal: {
+        reactionTime: 25,      // Slower than original
+        errorChance: 0.30,     // 30% chance of mistakes
+        predictionFrames: 4,   // Moderate prediction
+        speedMultiplier: 0.5,  // 50% of paddle speed
+        laserChance: 0.015     // 1.5% chance per frame
+    },
+    hard: {
+        reactionTime: 15,      // Faster reflexes
+        errorChance: 0.15,     // 15% chance of mistakes
+        predictionFrames: 8,   // Better prediction
+        speedMultiplier: 0.75, // 75% of paddle speed
+        laserChance: 0.03      // 3% chance per frame
+    }
+};
 
 // Starfield for spatial theme
 const stars = [];
-const NUM_STARS = 200;
+let NUM_STARS = particleEffects === 'high' ? 200 : 50;
 
-// Initialize stars
-for (let i = 0; i < NUM_STARS; i++) {
-    stars.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        z: Math.random() * 3 + 1,
-        opacity: Math.random()
-    });
+function createStars() {
+    stars.length = 0;
+    NUM_STARS = particleEffects === 'high' ? 200 : 50;
+    for (let i = 0; i < NUM_STARS; i++) {
+        stars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            z: Math.random() * 3 + 1,
+            opacity: Math.random()
+        });
+    }
 }
+createStars();
 
 const paddle1 = {
     x: 20,
@@ -101,24 +164,45 @@ const paddleShake = {
 const pongSound = new Audio();
 pongSound.src = 'data:audio/wav;base64,UklGRigFAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQFAACfAACgAACgAACfAACgAACgAAB/AAB/AAB/AAB/AAB/AAB/AACfAACgAACgAACfAACgAACgAAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/';
 
-// Create synth sound using Web Audio API
+// Create lightsaber-like sound using Web Audio API
 function createSynthSound() {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const duration = 0.15;
+    const duration = 0.25;
     const sampleRate = audioContext.sampleRate;
     const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
     const data = buffer.getChannelData(0);
     
-    // Generate a buzzy synth sound with multiple harmonics
+    // Generate a lightsaber-like hum with impact
     for (let i = 0; i < data.length; i++) {
         const t = i / sampleRate;
-        // Base frequency with harmonics for that 80s buzz
-        data[i] = (
-            Math.sin(2 * Math.PI * 220 * t) * 0.3 +  // Base frequency
-            Math.sin(2 * Math.PI * 440 * t) * 0.2 +  // First harmonic
-            Math.sin(2 * Math.PI * 880 * t) * 0.1 +  // Second harmonic
-            Math.sin(2 * Math.PI * 110 * t) * 0.2    // Sub bass
-        ) * Math.exp(-t * 10); // Envelope
+        
+        // Impact envelope (sharp attack, quick decay)
+        const impactEnv = Math.exp(-t * 15);
+        
+        // Sustained hum envelope
+        const sustainEnv = Math.exp(-t * 4);
+        
+        // Base frequencies for lightsaber hum
+        const baseFreq = 100;
+        const hum = (
+            Math.sin(2 * Math.PI * baseFreq * t) * 0.3 +        // Fundamental
+            Math.sin(2 * Math.PI * (baseFreq * 2) * t) * 0.2 +  // 2nd harmonic
+            Math.sin(2 * Math.PI * (baseFreq * 3) * t) * 0.15 + // 3rd harmonic
+            Math.sin(2 * Math.PI * (baseFreq * 0.5) * t) * 0.2  // Sub harmonic
+        );
+        
+        // High frequency "sizzle" for the clash
+        const sizzle = (
+            Math.sin(2 * Math.PI * 800 * t) * 0.1 +
+            Math.sin(2 * Math.PI * 1200 * t) * 0.05 +
+            (Math.random() - 0.5) * 0.05  // Slight noise
+        ) * impactEnv;
+        
+        // Frequency modulation for movement effect
+        const modulation = Math.sin(2 * Math.PI * 20 * t) * 0.1;
+        
+        // Combine all components
+        data[i] = (hum * (1 + modulation) * sustainEnv + sizzle) * 0.6;
     }
     
     // Create audio element from buffer
@@ -234,25 +318,47 @@ const hitSound = createHitSound();
 
 const keys = {};
 
+// Touch control state
+const touchControls = {
+    player1Up: false,
+    player1Down: false,
+    player2Up: false,
+    player2Down: false,
+    player1Laser: false,
+    player2Laser: false
+};
+
 // Set initial control display
 window.addEventListener('load', () => {
     updateControlDisplay();
     updateLaserDisplay();
+    if (isMobile) {
+        setupTouchControls();
+        // Force 1 player mode on mobile
+        if (playerMode === '2player') {
+            playerMode = '1player';
+            localStorage.setItem('playerMode', playerMode);
+            updateControlDisplay();
+        }
+    }
 });
 
 function updateLaserDisplay() {
     const p1Laser = document.getElementById('p1-laser');
     const p2Laser = document.getElementById('p2-laser');
     const warsInfo = document.getElementById('wars-info');
+    const mobileLaser = document.getElementById('mobile-laser');
     
     if (gameMode === 'wars') {
-        p1Laser.style.display = 'block';
-        p2Laser.style.display = 'block';
-        warsInfo.style.display = 'block';
+        if (p1Laser) p1Laser.style.display = 'block';
+        if (p2Laser) p2Laser.style.display = 'block';
+        if (warsInfo) warsInfo.style.display = 'block';
+        if (mobileLaser) mobileLaser.style.display = 'block';
     } else {
-        p1Laser.style.display = 'none';
-        p2Laser.style.display = 'none';
-        warsInfo.style.display = 'none';
+        if (p1Laser) p1Laser.style.display = 'none';
+        if (p2Laser) p2Laser.style.display = 'none';
+        if (warsInfo) warsInfo.style.display = 'none';
+        if (mobileLaser) mobileLaser.style.display = 'none';
     }
 }
 
@@ -277,13 +383,102 @@ document.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
 });
 
+function setupTouchControls() {
+    let touches = [];
+    
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        updateTouchControls(touches);
+        
+        // Handle laser shooting on tap in center
+        if (gameState === 'playing' && gameMode === 'wars') {
+            touches.forEach(touch => {
+                const rect = canvas.getBoundingClientRect();
+                const x = (touch.clientX - rect.left) / gameScale;
+                const centerX = canvas.width / 2;
+                const margin = 100;
+                
+                if (x > centerX - margin && x < centerX + margin) {
+                    const y = (touch.clientY - rect.top) / gameScale;
+                    if (y < canvas.height / 2 && !lasers.player1 && !paddleShake.paddle1.active) {
+                        shootLaser('player1');
+                    } else if (y >= canvas.height / 2 && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
+                        shootLaser('player2');
+                    }
+                }
+            });
+        }
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        updateTouchControls(touches);
+    });
+    
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        updateTouchControls(touches);
+    });
+    
+    // Also handle touch on title screen
+    canvas.addEventListener('touchstart', (e) => {
+        if (gameState === 'title') {
+            const rect = canvas.getBoundingClientRect();
+            const y = (e.touches[0].clientY - rect.top) / gameScale;
+            
+            // Simple touch areas for menu
+            if (y > 350) {
+                // Start game
+                gameState = 'waiting';
+                startGame();
+            }
+        }
+    });
+}
+
+function updateTouchControls(touches) {
+    // Reset all touch controls
+    touchControls.player1Up = false;
+    touchControls.player1Down = false;
+    touchControls.player2Up = false;
+    touchControls.player2Down = false;
+    
+    touches.forEach(touch => {
+        const rect = canvas.getBoundingClientRect();
+        const x = (touch.clientX - rect.left) / gameScale;
+        const y = (touch.clientY - rect.top) / gameScale;
+        
+        // Left side controls (Player 1)
+        if (x < canvas.width / 2) {
+            if (y < canvas.height / 2) {
+                touchControls.player1Up = true;
+            } else {
+                touchControls.player1Down = true;
+            }
+        }
+        // Right side controls (Player 2 in 2-player mode)
+        else if (playerMode === '2player') {
+            if (y < canvas.height / 2) {
+                touchControls.player2Up = true;
+            } else {
+                touchControls.player2Down = true;
+            }
+        }
+    });
+}
+
 function handleTitleInput(e) {
+    const maxSelection = playerMode === '1player' ? 4 : 3; // Added particles option
+    
     switch(e.key) {
         case 'ArrowUp':
             menuSelection = Math.max(0, menuSelection - 1);
             break;
         case 'ArrowDown':
-            menuSelection = Math.min(2, menuSelection + 1);
+            menuSelection = Math.min(maxSelection, menuSelection + 1);
             break;
         case 'ArrowLeft':
             if (menuSelection === 0) {
@@ -293,10 +488,33 @@ function handleTitleInput(e) {
                 gameMode = gameMode === 'pong' ? 'wars' : 'pong';
                 localStorage.setItem('gameMode', gameMode);
                 updateLaserDisplay();
-            } else {
+            } else if (menuSelection === 2) {
                 playerMode = playerMode === '1player' ? '2player' : '1player';
                 localStorage.setItem('playerMode', playerMode);
                 updateControlDisplay();
+                // Reset menu selection if switching from 1player to 2player while on difficulty
+                if (menuSelection === 3 && playerMode === '2player') {
+                    menuSelection = 2;
+                }
+            } else if (menuSelection === 3) {
+                if (playerMode === '1player') {
+                    const difficulties = ['easy', 'normal', 'hard'];
+                    const currentIndex = difficulties.indexOf(aiDifficulty);
+                    aiDifficulty = difficulties[(currentIndex + 2) % 3]; // +2 to go left
+                    localStorage.setItem('aiDifficulty', aiDifficulty);
+                } else {
+                    // Particle effects for 2 player mode
+                    particleEffects = particleEffects === 'low' ? 'high' : 'low';
+                    localStorage.setItem('particleEffects', particleEffects);
+                    createStars();
+                    createTitleStars();
+                }
+            } else if (menuSelection === 4 && playerMode === '1player') {
+                // Particle effects for 1 player mode
+                particleEffects = particleEffects === 'low' ? 'high' : 'low';
+                localStorage.setItem('particleEffects', particleEffects);
+                createStars();
+                createTitleStars();
             }
             break;
         case 'ArrowRight':
@@ -307,10 +525,33 @@ function handleTitleInput(e) {
                 gameMode = gameMode === 'pong' ? 'wars' : 'pong';
                 localStorage.setItem('gameMode', gameMode);
                 updateLaserDisplay();
-            } else {
+            } else if (menuSelection === 2) {
                 playerMode = playerMode === '1player' ? '2player' : '1player';
                 localStorage.setItem('playerMode', playerMode);
                 updateControlDisplay();
+                // Reset menu selection if switching from 1player to 2player while on difficulty
+                if (menuSelection === 3 && playerMode === '2player') {
+                    menuSelection = 2;
+                }
+            } else if (menuSelection === 3) {
+                if (playerMode === '1player') {
+                    const difficulties = ['easy', 'normal', 'hard'];
+                    const currentIndex = difficulties.indexOf(aiDifficulty);
+                    aiDifficulty = difficulties[(currentIndex + 1) % 3];
+                    localStorage.setItem('aiDifficulty', aiDifficulty);
+                } else {
+                    // Particle effects for 2 player mode
+                    particleEffects = particleEffects === 'low' ? 'high' : 'low';
+                    localStorage.setItem('particleEffects', particleEffects);
+                    createStars();
+                    createTitleStars();
+                }
+            } else if (menuSelection === 4 && playerMode === '1player') {
+                // Particle effects for 1 player mode
+                particleEffects = particleEffects === 'low' ? 'high' : 'low';
+                localStorage.setItem('particleEffects', particleEffects);
+                createStars();
+                createTitleStars();
             }
             break;
         case 'Enter':
@@ -366,9 +607,11 @@ function resetBall() {
 function updateAI() {
     if (playerMode !== '1player' || gameState !== 'playing') return;
     
+    // Get current difficulty settings
+    const difficulty = AI_DIFFICULTIES[aiDifficulty];
+    
     // AI laser shooting in wars mode
-    if (gameMode === 'wars' && !lasers.player2 && Math.random() < 0.02) {
-        // 2% chance per frame to shoot
+    if (gameMode === 'wars' && !lasers.player2 && Math.random() < difficulty.laserChance) {
         shootLaser('player2');
     }
     
@@ -379,10 +622,10 @@ function updateAI() {
     if (ball.dx > 0) {
         // Simple prediction based on current trajectory
         const timeToReachPaddle = (paddle2.x - ball.x) / ball.dx;
-        predictedY = ball.y + (ball.dy * timeToReachPaddle * AI_PREDICTION_FRAMES / 30);
+        predictedY = ball.y + (ball.dy * timeToReachPaddle * difficulty.predictionFrames / 30);
         
         // Add some error to make AI beatable
-        if (Math.random() < AI_ERROR_CHANCE) {
+        if (Math.random() < difficulty.errorChance) {
             predictedY += (Math.random() - 0.5) * PADDLE_HEIGHT * 2;
         }
     }
@@ -392,11 +635,11 @@ function updateAI() {
     const diff = predictedY + ball.size / 2 - paddleCenter;
     
     // Add reaction delay
-    if (Math.abs(diff) > AI_REACTION_TIME) {
+    if (Math.abs(diff) > difficulty.reactionTime) {
         if (diff > 0) {
-            paddle2.dy = Math.min(PADDLE_SPEED * 0.6, Math.abs(diff) / 15);
+            paddle2.dy = Math.min(PADDLE_SPEED * difficulty.speedMultiplier, Math.abs(diff) / 15);
         } else {
-            paddle2.dy = -Math.min(PADDLE_SPEED * 0.6, Math.abs(diff) / 15);
+            paddle2.dy = -Math.min(PADDLE_SPEED * difficulty.speedMultiplier, Math.abs(diff) / 15);
         }
     } else {
         paddle2.dy = 0;
@@ -461,10 +704,10 @@ function updatePaddles() {
     // Player 1 controls (only if not shaking)
     if (!paddleShake.paddle1.active) {
         paddle1.dy = 0;
-        if (keys['q'] && paddle1.y > 0) {
+        if ((keys['q'] || touchControls.player1Up) && paddle1.y > 0) {
             paddle1.dy = -PADDLE_SPEED;
         }
-        if (keys['a'] && paddle1.y < canvas.height - PADDLE_HEIGHT) {
+        if ((keys['a'] || touchControls.player1Down) && paddle1.y < canvas.height - PADDLE_HEIGHT) {
             paddle1.dy = PADDLE_SPEED;
         }
     } else {
@@ -475,10 +718,10 @@ function updatePaddles() {
         // Player 2 controls (only if not shaking)
         if (!paddleShake.paddle2.active) {
             paddle2.dy = 0;
-            if (keys['p'] && paddle2.y > 0) {
+            if ((keys['p'] || touchControls.player2Up) && paddle2.y > 0) {
                 paddle2.dy = -PADDLE_SPEED;
             }
-            if (keys['l'] && paddle2.y < canvas.height - PADDLE_HEIGHT) {
+            if ((keys['l'] || touchControls.player2Down) && paddle2.y < canvas.height - PADDLE_HEIGHT) {
                 paddle2.dy = PADDLE_SPEED;
             }
         } else {
@@ -655,24 +898,54 @@ function drawTitleScreen() {
         ctx.fillStyle = '#fff';
     }
     
-    ctx.fillText('PINGPONG WARS', canvas.width / 2, 120);
+    ctx.fillText('PINGPONG WARS', canvas.width / 2, 100);
     ctx.shadowBlur = 0;
     
-    // Press Enter text
+    // Press Enter text (or tap for mobile)
     ctx.font = '24px Courier New';
     if (currentTheme === 'spatial') {
         ctx.fillStyle = '#ff0';
     } else {
         ctx.fillStyle = '#fff';
     }
-    ctx.fillText('PRESS ENTER TO PLAY', canvas.width / 2, 180);
+    const startText = isMobile ? 'TAP HERE TO PLAY' : 'PRESS ENTER TO PLAY';
+    ctx.fillText(startText, canvas.width / 2, 160);
     
-    // Menu options
+    // Draw tap area indicator for mobile
+    if (isMobile) {
+        ctx.strokeStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(canvas.width / 2 - 150, 350, 300, 40);
+        ctx.setLineDash([]);
+    }
+    
+    // Menu options - adjust spacing to fit all options
+    const baseY = 220;
+    const spacing = playerMode === '1player' ? 32 : 36; // Tighter spacing for 1-player mode
+    
     const options = [
-        { label: 'THEME:', value: currentTheme === 'classic' ? 'CLASSIC' : 'SPATIAL', y: 240 },
-        { label: 'MODE:', value: gameMode === 'pong' ? 'PONG MODE' : 'WARS MODE', y: 280 },
-        { label: 'PLAYERS:', value: playerMode === '1player' ? '1 PLAYER' : '2 PLAYERS', y: 320 }
+        { label: 'THEME:', value: currentTheme === 'classic' ? 'CLASSIC' : 'SPATIAL', y: baseY },
+        { label: 'MODE:', value: gameMode === 'pong' ? 'PONG MODE' : 'WARS MODE', y: baseY + spacing },
+        { label: 'PLAYERS:', value: playerMode === '1player' ? '1 PLAYER' : '2 PLAYERS', y: baseY + spacing * 2 }
     ];
+    
+    // Add difficulty option only for 1 player mode
+    if (playerMode === '1player') {
+        options.push({ 
+            label: 'DIFFICULTY:', 
+            value: aiDifficulty.toUpperCase(), 
+            y: baseY + spacing * 3 
+        });
+    }
+    
+    // Add particle effects option
+    const particleIndex = playerMode === '1player' ? 4 : 3;
+    options.push({ 
+        label: 'PARTICLES:', 
+        value: particleEffects.toUpperCase(), 
+        y: baseY + spacing * particleIndex 
+    });
     
     options.forEach((option, index) => {
         const isSelected = index === menuSelection;
@@ -933,6 +1206,37 @@ function drawGameState() {
     }
 }
 
+function drawTouchZones() {
+    if (!isMobile || gameState !== 'playing') return;
+    
+    ctx.save();
+    ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(0, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    
+    // Draw touch zone dividers
+    ctx.beginPath();
+    // Horizontal center line for up/down
+    ctx.moveTo(0, canvas.height / 2);
+    ctx.lineTo(canvas.width, canvas.height / 2);
+    
+    // Vertical line for player separation (2 player mode)
+    if (playerMode === '2player') {
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+    }
+    
+    ctx.stroke();
+    
+    // Draw laser zones in wars mode
+    if (gameMode === 'wars') {
+        ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(255, 255, 0, 0.2)' : 'rgba(255, 255, 255, 0.3)';
+        ctx.strokeRect(canvas.width / 2 - 100, 0, 200, canvas.height);
+    }
+    
+    ctx.restore();
+}
+
 function draw() {
     if (currentTheme === 'spatial') {
         // Dark space background
@@ -951,6 +1255,7 @@ function draw() {
     if (gameMode === 'wars') {
         drawLasers();
     }
+    drawTouchZones();
     drawGameState();
 }
 
