@@ -643,20 +643,25 @@ function setupTouchControls() {
         touches = Array.from(e.touches);
         
         if (gameState === 'title') {
-            // Handle menu swipes
+            // Handle menu touches for both main menu and options
             const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
+            // Convert touch coordinates to canvas coordinates
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
             menuTouchStart = {
-                x: (touch.clientX - rect.left) / gameScale,
-                y: (touch.clientY - rect.top) / gameScale,
+                x: (touch.clientX - rect.left) * scaleX,
+                y: (touch.clientY - rect.top) * scaleY,
                 time: Date.now()
             };
         } else if (gameState === 'playing') {
             // Handle paddle drag start
             touches.forEach(touch => {
                 const rect = canvas.getBoundingClientRect();
-                const x = (touch.clientX - rect.left) / gameScale;
-                const y = (touch.clientY - rect.top) / gameScale;
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (touch.clientX - rect.left) * scaleX;
+                const y = (touch.clientY - rect.top) * scaleY;
                 
                 // Check if touching near a paddle
                 if (x < paddle1.x + paddle1.width + 50) {
@@ -711,32 +716,31 @@ function setupTouchControls() {
     canvas.addEventListener('touchend', (e) => {
         e.preventDefault();
         
-        if (gameState === 'title' && menuTouchStart) {
+        if (gameState === 'title' && menuTouchStart && !inOptionsMenu) {
             const touch = e.changedTouches[0];
             const rect = canvas.getBoundingClientRect();
-            const endX = (touch.clientX - rect.left) / gameScale;
-            const endY = (touch.clientY - rect.top) / gameScale;
+            // Convert touch coordinates to canvas coordinates
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const endX = (touch.clientX - rect.left) * scaleX;
+            const endY = (touch.clientY - rect.top) * scaleY;
             
-            // Handle taps on menu items
-            const baseY = 220;
-            const spacing = playerMode === '1player' ? 32 : 36;
+            // Handle taps on menu items - match the positions from drawTitleScreen
+            const baseY = 190;  // Match drawTitleScreen baseY
+            const spacing = 32; // Match drawTitleScreen spacing
             const options = [];
             
-            // Build options array with positions
-            options.push({ y: baseY, index: 0 });
-            options.push({ y: baseY + spacing, index: 1 });
-            options.push({ y: baseY + spacing * 2, index: 2 });
-            if (playerMode === '1player') {
-                options.push({ y: baseY + spacing * 3, index: 3 });
-                options.push({ y: baseY + spacing * 4, index: 4 });
-            } else {
-                options.push({ y: baseY + spacing * 3, index: 3 });
-            }
+            // Build options array with positions (4 main menu items)
+            options.push({ y: baseY, index: 0 });           // Theme
+            options.push({ y: baseY + spacing, index: 1 }); // Mode
+            options.push({ y: baseY + spacing * 2, index: 2 }); // Players
+            options.push({ y: baseY + spacing * 3, index: 3 }); // Options
             
             // Check if tapped on any menu option
             let tappedOption = -1;
             options.forEach(opt => {
-                if (Math.abs(endY - opt.y) < 20) {
+                // Increase hit target to 25 pixels
+                if (Math.abs(endY - opt.y) < 25) {
                     tappedOption = opt.index;
                 }
             });
@@ -744,24 +748,79 @@ function setupTouchControls() {
             if (tappedOption !== -1) {
                 menuSelection = tappedOption;
                 
-                // Check if tapped on arrows
-                const centerX = canvas.width / 2 + 30;
-                const textWidth = 150; // Approximate width
-                const arrowSpacing = 35;
-                
-                if (endX < centerX - textWidth/2) {
-                    // Tapped left arrow
-                    handleMenuOptionChange('left');
-                } else if (endX > centerX + textWidth/2) {
-                    // Tapped right arrow
-                    handleMenuOptionChange('right');
+                if (tappedOption === 3) {
+                    // Tapped on OPTIONS - enter the options menu
+                    inOptionsMenu = true;
+                    optionsMenuSelection = 0;
+                } else {
+                    // Check if tapped on arrows for other options
+                    const centerX = canvas.width / 2 + 30;
+                    const optionWidth = 200; // Wider hit area
+                    
+                    if (endX < centerX - 20) {
+                        // Tapped left side
+                        handleMenuOptionChange('left');
+                    } else if (endX > centerX + 20) {
+                        // Tapped right side
+                        handleMenuOptionChange('right');
+                    }
                 }
-            } else if (endY > 350) {
-                // Start game
-                gameState = 'ready';
-                readyStartTime = Date.now();
-                startGame();
-                readySound.cloneNode().play().catch(e => console.log('Ready sound failed:', e));
+            } else if (endY < 180 && endY > 130) {
+                // Tapped on "TAP TO PLAY" area
+                if (menuSelection === 3) {
+                    // Enter options if OPTIONS is selected
+                    inOptionsMenu = true;
+                    optionsMenuSelection = 0;
+                } else {
+                    // Start game
+                    gameState = 'ready';
+                    readyStartTime = Date.now();
+                    startGame();
+                    readySound.cloneNode().play().catch(e => console.log('Ready sound failed:', e));
+                }
+            }
+            
+            menuTouchStart = null;
+        } else if (gameState === 'title' && menuTouchStart && inOptionsMenu) {
+            // Handle options menu touches
+            const touch = e.changedTouches[0];
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const endX = (touch.clientX - rect.left) * scaleX;
+            const endY = (touch.clientY - rect.top) * scaleY;
+            
+            // Check for ESC/Back area (top of screen)
+            if (endY < 130) {
+                inOptionsMenu = false;
+                menuTouchStart = null;
+                return;
+            }
+            
+            // Options menu positions
+            const baseY = 150;
+            const spacing = 30;
+            
+            // Determine which option was tapped
+            let optionIndex = Math.floor((endY - baseY + spacing/2) / spacing);
+            const maxOptions = playerMode === '1player' ? (isMobile ? 3 : 5) : (isMobile ? 2 : 4);
+            
+            if (optionIndex >= 0 && optionIndex < maxOptions) {
+                optionsMenuSelection = optionIndex;
+                
+                // Handle the tap based on option type
+                const centerX = canvas.width / 2 + 80;
+                
+                if (endX < centerX - 30) {
+                    // Left arrow
+                    handleOptionsInput({ key: 'ArrowLeft' });
+                } else if (endX > centerX + 30) {
+                    // Right arrow
+                    handleOptionsInput({ key: 'ArrowRight' });
+                } else if (!isMobile && (optionIndex === maxOptions - 2 || optionIndex === maxOptions - 1)) {
+                    // Control settings - simulate Enter
+                    handleOptionsInput({ key: 'Enter' });
+                }
             }
             
             menuTouchStart = null;
