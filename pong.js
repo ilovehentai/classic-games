@@ -87,6 +87,8 @@ window.addEventListener('resize', resizeCanvas);
 let gameState = 'title';
 let player1Score = 0;
 let player2Score = 0;
+let isPaused = false;
+let readyStartTime = 0;
 let currentTheme = localStorage.getItem('theme') || 'classic';
 let playerMode = localStorage.getItem('playerMode') || '1player';
 let gameMode = localStorage.getItem('gameMode') || 'pong';
@@ -583,12 +585,26 @@ document.addEventListener('keydown', (e) => {
         handleTitleInput(e);
     } else if (e.key === 'Enter' && (gameState === 'waiting' || gameState === 'gameover')) {
         gameState = 'title';
-    } else if (gameState === 'playing' && gameMode === 'wars') {
-        // Handle laser shooting with custom controls
-        if (e.key.toLowerCase() === customControls.player1.shoot && !lasers.player1 && !paddleShake.paddle1.active) {
-            shootLaser('player1');
-        } else if (e.key.toLowerCase() === customControls.player2.shoot && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
-            shootLaser('player2');
+    } else if (gameState === 'playing') {
+        if (e.key === 'Escape') {
+            if (isPaused) {
+                // If already paused, ESC quits to menu
+                isPaused = false;
+                gameState = 'title';
+            } else {
+                // If not paused, ESC pauses the game
+                isPaused = true;
+            }
+        } else if (isPaused && e.key === 'Enter') {
+            // Resume game
+            isPaused = false;
+        } else if (!isPaused && gameMode === 'wars') {
+            // Handle laser shooting with custom controls
+            if (e.key.toLowerCase() === customControls.player1.shoot && !lasers.player1 && !paddleShake.paddle1.active) {
+                shootLaser('player1');
+            } else if (e.key.toLowerCase() === customControls.player2.shoot && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
+                shootLaser('player2');
+            }
         }
     }
 });
@@ -824,6 +840,30 @@ function setupTouchControls() {
             }
             
             menuTouchStart = null;
+        } else if (gameState === 'gameover') {
+            // On mobile, tap anywhere to return to title
+            if (isMobile) {
+                gameState = 'title';
+            }
+        } else if (gameState === 'playing' && isPaused) {
+            // Handle pause menu taps on mobile
+            if (isMobile) {
+                const touch = e.changedTouches[0];
+                const rect = canvas.getBoundingClientRect();
+                const scaleY = canvas.height / rect.height;
+                const endY = (touch.clientY - rect.top) * scaleY;
+                
+                // Check which option was tapped
+                const centerY = canvas.height / 2;
+                if (Math.abs(endY - (centerY + 20)) < 30) {
+                    // Resume tapped
+                    isPaused = false;
+                } else if (Math.abs(endY - (centerY + 50)) < 30) {
+                    // Quit tapped
+                    isPaused = false;
+                    gameState = 'title';
+                }
+            }
         }
         
         // Reset drag states
@@ -1953,6 +1993,39 @@ function drawCenterLine() {
     }
 }
 
+function drawPause() {
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Pause text
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    
+    if (currentTheme === 'spatial') {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ff0';
+        ctx.fillStyle = '#ff0';
+    } else {
+        ctx.fillStyle = '#fff';
+    }
+    
+    ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 40);
+    ctx.shadowBlur = 0;
+    
+    // Instructions
+    ctx.font = '20px Courier New';
+    ctx.fillStyle = currentTheme === 'spatial' ? '#0ff' : '#fff';
+    
+    if (isMobile) {
+        ctx.fillText('TAP HERE - Resume Game', canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('TAP HERE - Quit to Menu', canvas.width / 2, canvas.height / 2 + 50);
+    } else {
+        ctx.fillText('ENTER - Resume Game', canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText('ESC - Quit to Menu', canvas.width / 2, canvas.height / 2 + 50);
+    }
+}
+
 function drawGameState() {
     if (gameState === 'waiting') {
         ctx.font = '36px Courier New';
@@ -1983,7 +2056,8 @@ function drawGameState() {
         const winner = player1Score >= WINNING_SCORE ? 'PLAYER 1' : 'PLAYER 2';
         ctx.fillText(`${winner} WINS!`, canvas.width / 2, canvas.height / 2 - 40);
         ctx.font = '24px Courier New';
-        ctx.fillText('PRESS ENTER TO PLAY AGAIN', canvas.width / 2, canvas.height / 2 + 20);
+        const continueText = isMobile ? 'TAP ANYWHERE TO CONTINUE' : 'PRESS ENTER TO PLAY AGAIN';
+        ctx.fillText(continueText, canvas.width / 2, canvas.height / 2 + 20);
         ctx.shadowBlur = 0;
     }
 }
@@ -2084,6 +2158,11 @@ function draw() {
     }
     drawTouchZones();
     drawGameState();
+    
+    // Draw pause overlay if paused
+    if (isPaused) {
+        drawPause();
+    }
 }
 
 function gameLoop() {
@@ -2099,10 +2178,13 @@ function gameLoop() {
         }
         drawReady();
     } else {
-        updatePaddles();
-        updateBall();
-        if (gameMode === 'wars') {
-            updateLasers();
+        // Only update game objects if not paused
+        if (!isPaused) {
+            updatePaddles();
+            updateBall();
+            if (gameMode === 'wars') {
+                updateLasers();
+            }
         }
         if (currentTheme === 'spatial') {
             updateStars();
