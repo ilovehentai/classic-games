@@ -631,7 +631,16 @@ function createReadySound() {
     return audio;
 }
 
-const readySound = createReadySound();
+// Use ready.mp3 with fallback to synthesized version
+let readySound;
+try {
+    readySound = new Audio('ready.mp3');
+    readySound.volume = 0.7;
+} catch (e) {
+    // Fallback to synthesized sound if file loading fails
+    console.log('Failed to load ready.mp3, using synthesized sound:', e);
+    readySound = createReadySound();
+}
 
 const keys = {};
 
@@ -1320,9 +1329,9 @@ function updateAI() {
     // Add reaction delay
     if (Math.abs(diff) > difficulty.reactionTime) {
         if (diff > 0) {
-            paddle2.dy = Math.min(PADDLE_SPEED * difficulty.speedMultiplier, Math.abs(diff) / 15);
+            paddle2.dy = PADDLE_SPEED * difficulty.speedMultiplier;
         } else {
-            paddle2.dy = -Math.min(PADDLE_SPEED * difficulty.speedMultiplier, Math.abs(diff) / 15);
+            paddle2.dy = -PADDLE_SPEED * difficulty.speedMultiplier;
         }
     } else {
         paddle2.dy = 0;

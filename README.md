@@ -79,6 +79,7 @@ A modern take on the classic Pong game with multiple game modes, visual themes, 
    - **Difficulty**: AI difficulty (1 Player mode only)
    - **Particles**: Visual effects density
    - **Points for Victory**: Set winning score
+   - **Resolution**: Choose rendering quality (Auto/Low/Medium/High/Ultra)
    - **Set Controls**: Customize keyboard controls (desktop only)
 4. Press Enter to start (or tap on mobile)
 5. Control your paddle to hit the ball back
@@ -98,11 +99,12 @@ A modern take on the classic Pong game with multiple game modes, visual themes, 
 - **Title Screen**: Interactive menu with visual theme preview and hint system
 - **Options Menu**: Comprehensive settings with customizable controls
 - **Game States**: Title → Ready → Playing → Game Over → Title (with Pause state)
-- **60 FPS**: Smooth gameplay using requestAnimationFrame
-- **Responsive Physics**: Angle-based ball acceleration
+- **60 FPS**: Frame-limited gameplay with delta time calculations
+- **Resolution Scaling**: Context-based scaling maintains consistent proportions
+- **Responsive Physics**: Angle-based ball acceleration with speed-independent movement
 - **Wars Mode**: Laser shooting and stun mechanics
 - **Mobile Responsive**: Full-screen canvas with touch controls
-- **Audio System**: Synthesized sounds including robot voice announcements
+- **Audio System**: MP3 audio files with synthesized sound fallbacks
 
 ### AI Implementation
 The AI opponent features:
@@ -137,6 +139,7 @@ The AI opponent features:
 pongze/
 ├── index.html      # Game HTML structure
 ├── pong.js         # Game logic and rendering
+├── ready.mp3       # Ready sound effect
 └── README.md       # This file
 ```
 
@@ -166,10 +169,14 @@ pongze/
 ## Recent Updates
 
 ### New Features
+- **Resolution Scaling**: Choose from Low (800x400), Medium (1200x600), High (1600x800), or Ultra (2400x1200) resolutions
+- **Frame Rate Limiting**: Consistent 60 FPS gameplay across all devices
+- **Auto Resolution Detection**: Automatically selects the best resolution for your screen
+- **Improved AI**: Fixed AI movement to be more responsive and challenging
+- **Ready Sound**: Uses ready.mp3 audio file with fallback to synthesized sound
 - **Customizable Controls**: Set your own keyboard keys for each action
 - **Variable Victory Points**: Choose from 3 to 20 points for game length
 - **Pause System**: ESC to pause, with resume/quit options
-- **Ready Countdown**: "Ready!" announcement with robot voice
 - **Enhanced Mobile Support**: Full touch controls and responsive design
 - **Improved Menu System**: Cleaner layout with helpful hints
 - **Options Menu**: Centralized settings management
