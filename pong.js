@@ -99,6 +99,23 @@ let customControls = {
 let settingControls = false;
 let controlBeingSet = null;
 
+// Menu hints
+const menuHints = {
+    main: [
+        "Choose between classic retro style or modern space theme with effects",
+        "Classic Pong or Wars mode with laser combat - stun your opponent!",
+        "Play against AI or challenge a friend on the same keyboard",
+        "Configure game settings, controls, and victory conditions"
+    ],
+    options: [
+        "AI difficulty - Easy, Normal, or Hard",
+        "Visual effects density - Low for performance, High for beauty",
+        "Set points needed to win - from quick 3-point games to epic 20-point battles",
+        "Customize Player 1 keyboard controls",
+        "Customize Player 2 keyboard controls"
+    ]
+};
+
 // Title screen stars
 const titleStars = [];
 let NUM_TITLE_STARS = particleEffects === 'high' ? 300 : 50;
@@ -1202,7 +1219,7 @@ function drawOptionsMenu() {
     // Back instruction
     ctx.font = '16px Courier New';
     ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-    ctx.fillText('ESC TO BACK', canvas.width / 2, 120);
+    ctx.fillText('ESC TO BACK', canvas.width / 2, 110);
     
     if (settingControls) {
         drawControlSetting();
@@ -1210,8 +1227,8 @@ function drawOptionsMenu() {
     }
     
     // Options
-    const baseY = 160;
-    const spacing = 35;
+    const baseY = 150;
+    const spacing = 30;
     
     const options = [];
     
@@ -1300,6 +1317,34 @@ function drawOptionsMenu() {
         ctx.textAlign = 'center';
         ctx.fillText(option.value, canvas.width / 2 + 80, y);
     });
+    
+    // Draw hint box for options menu
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    const hintY = baseY + spacing * options.length + 20;
+    
+    if (currentTheme === 'spatial') {
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
+    } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    }
+    
+    // Get the appropriate hint
+    let hintIndex = optionsMenuSelection;
+    if (playerMode === '2player' && !isMobile && optionsMenuSelection > 0) {
+        hintIndex++; // Adjust for missing difficulty option
+    }
+    
+    const hint = menuHints.options[hintIndex] || "";
+    if (hint) {
+        ctx.fillText(hint, canvas.width / 2, hintY);
+        
+        // Draw hint box border
+        const hintWidth = ctx.measureText(hint).width + 20;
+        ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(0, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(canvas.width / 2 - hintWidth / 2, hintY - 15, hintWidth, 25);
+    }
 }
 
 function drawControlSetting() {
@@ -1369,18 +1414,18 @@ function drawTitleScreen() {
     ctx.shadowBlur = 0;
     
     // Press Enter text (or tap for mobile)
-    ctx.font = '24px Courier New';
+    ctx.font = '20px Courier New';
     if (currentTheme === 'spatial') {
         ctx.fillStyle = '#ff0';
     } else {
         ctx.fillStyle = '#fff';
     }
-    const startText = isMobile ? 'TAP HERE TO PLAY' : 'PRESS ENTER TO PLAY';
-    ctx.fillText(startText, canvas.width / 2, 160);
+    const startText = isMobile ? 'TAP TO PLAY' : 'PRESS ENTER TO PLAY';
+    ctx.fillText(startText, canvas.width / 2, 150);
     
     // Menu options - only 4 main options
-    const baseY = 220;
-    const spacing = 40;
+    const baseY = 190;
+    const spacing = 32;
     
     const options = [
         { label: 'THEME:', value: currentTheme === 'classic' ? 'CLASSIC' : 'SPATIAL', y: baseY },
@@ -1445,6 +1490,27 @@ function drawTitleScreen() {
         ctx.textAlign = 'center';
         ctx.fillText(option.value, canvas.width / 2 + 30, option.y);
     });
+    
+    // Draw hint box
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    const hintY = baseY + spacing * 4 + 20;
+    
+    if (currentTheme === 'spatial') {
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
+    } else {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    }
+    
+    // Draw hint text
+    const hint = menuHints.main[menuSelection];
+    ctx.fillText(hint, canvas.width / 2, hintY);
+    
+    // Draw hint box border
+    const hintWidth = ctx.measureText(hint).width + 20;
+    ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(0, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(canvas.width / 2 - hintWidth / 2, hintY - 15, hintWidth, 25);
 }
 
 function drawLasers() {
