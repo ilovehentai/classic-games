@@ -13,13 +13,15 @@ let gameState = 'title';
 let player1Score = 0;
 let player2Score = 0;
 let currentTheme = localStorage.getItem('theme') || 'classic';
-let playerMode = localStorage.getItem('mode') || '1player';
+let playerMode = localStorage.getItem('playerMode') || '1player';
+let gameMode = localStorage.getItem('gameMode') || 'pong';
 
 // Title screen state
-let menuSelection = 0; // 0 = theme, 1 = mode
+let menuSelection = 0; // 0 = theme, 1 = mode, 2 = players
 const menuOptions = {
     theme: ['classic', 'spatial'],
-    mode: ['1player', '2player']
+    mode: ['pong', 'wars'],
+    players: ['1player', '2player']
 };
 
 // Title screen stars
@@ -80,6 +82,21 @@ const ball = {
 // Ball trail for comet effect
 const ballTrail = [];
 const MAX_TRAIL_LENGTH = 20;
+
+// Laser mechanics
+const LASER_SPEED = 10;
+const LASER_LENGTH = 30;
+const SHAKE_DURATION = 500; // ms
+const lasers = {
+    player1: null,
+    player2: null
+};
+
+// Paddle shake state
+const paddleShake = {
+    paddle1: { active: false, startTime: 0 },
+    paddle2: { active: false, startTime: 0 }
+};
 
 const pongSound = new Audio();
 pongSound.src = 'data:audio/wav;base64,UklGRigFAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQFAACfAACgAACgAACfAACgAACgAAB/AAB/AAB/AAB/AAB/AAB/AACfAACgAACgAACfAACgAACgAAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/';
@@ -167,12 +184,77 @@ function audioBufferToWav(buffer) {
 
 const synthSound = createSynthSound();
 
+// Create laser shoot sound
+function createLaserSound() {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const duration = 0.1;
+    const sampleRate = audioContext.sampleRate;
+    const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Generate a descending frequency sweep
+    for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const frequency = 800 * Math.exp(-t * 20); // Descending sweep
+        data[i] = Math.sin(2 * Math.PI * frequency * t) * Math.exp(-t * 15);
+    }
+    
+    const wav = audioBufferToWav(buffer);
+    const blob = new Blob([wav], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.volume = 0.3;
+    return audio;
+}
+
+// Create hit sound
+function createHitSound() {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const duration = 0.2;
+    const sampleRate = audioContext.sampleRate;
+    const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Generate noise burst
+    for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 20);
+    }
+    
+    const wav = audioBufferToWav(buffer);
+    const blob = new Blob([wav], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.volume = 0.4;
+    return audio;
+}
+
+const laserSound = createLaserSound();
+const hitSound = createHitSound();
+
 const keys = {};
 
 // Set initial control display
 window.addEventListener('load', () => {
     updateControlDisplay();
+    updateLaserDisplay();
 });
+
+function updateLaserDisplay() {
+    const p1Laser = document.getElementById('p1-laser');
+    const p2Laser = document.getElementById('p2-laser');
+    const warsInfo = document.getElementById('wars-info');
+    
+    if (gameMode === 'wars') {
+        p1Laser.style.display = 'block';
+        p2Laser.style.display = 'block';
+        warsInfo.style.display = 'block';
+    } else {
+        p1Laser.style.display = 'none';
+        p2Laser.style.display = 'none';
+        warsInfo.style.display = 'none';
+    }
+}
 
 document.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
@@ -181,6 +263,13 @@ document.addEventListener('keydown', (e) => {
         handleTitleInput(e);
     } else if (e.key === 'Enter' && (gameState === 'waiting' || gameState === 'gameover')) {
         gameState = 'title';
+    } else if (gameState === 'playing' && gameMode === 'wars') {
+        // Handle laser shooting
+        if (e.key.toLowerCase() === 's' && !lasers.player1 && !paddleShake.paddle1.active) {
+            shootLaser('player1');
+        } else if (e.key.toLowerCase() === 'k' && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
+            shootLaser('player2');
+        }
     }
 });
 
@@ -194,15 +283,19 @@ function handleTitleInput(e) {
             menuSelection = Math.max(0, menuSelection - 1);
             break;
         case 'ArrowDown':
-            menuSelection = Math.min(1, menuSelection + 1);
+            menuSelection = Math.min(2, menuSelection + 1);
             break;
         case 'ArrowLeft':
             if (menuSelection === 0) {
                 currentTheme = currentTheme === 'classic' ? 'spatial' : 'classic';
                 localStorage.setItem('theme', currentTheme);
+            } else if (menuSelection === 1) {
+                gameMode = gameMode === 'pong' ? 'wars' : 'pong';
+                localStorage.setItem('gameMode', gameMode);
+                updateLaserDisplay();
             } else {
                 playerMode = playerMode === '1player' ? '2player' : '1player';
-                localStorage.setItem('mode', playerMode);
+                localStorage.setItem('playerMode', playerMode);
                 updateControlDisplay();
             }
             break;
@@ -210,9 +303,13 @@ function handleTitleInput(e) {
             if (menuSelection === 0) {
                 currentTheme = currentTheme === 'classic' ? 'spatial' : 'classic';
                 localStorage.setItem('theme', currentTheme);
+            } else if (menuSelection === 1) {
+                gameMode = gameMode === 'pong' ? 'wars' : 'pong';
+                localStorage.setItem('gameMode', gameMode);
+                updateLaserDisplay();
             } else {
                 playerMode = playerMode === '1player' ? '2player' : '1player';
-                localStorage.setItem('mode', playerMode);
+                localStorage.setItem('playerMode', playerMode);
                 updateControlDisplay();
             }
             break;
@@ -238,6 +335,24 @@ function startGame() {
     player1Score = 0;
     player2Score = 0;
     resetBall();
+    // Reset lasers and shake states
+    lasers.player1 = null;
+    lasers.player2 = null;
+    paddleShake.paddle1 = { active: false, startTime: 0 };
+    paddleShake.paddle2 = { active: false, startTime: 0 };
+}
+
+function shootLaser(player) {
+    const paddle = player === 'player1' ? paddle1 : paddle2;
+    const direction = player === 'player1' ? 1 : -1;
+    
+    lasers[player] = {
+        x: player === 'player1' ? paddle.x + paddle.width : paddle.x,
+        y: paddle.y + paddle.height / 2,
+        dx: direction * LASER_SPEED
+    };
+    
+    laserSound.cloneNode().play().catch(e => console.log('Laser sound failed:', e));
 }
 
 function resetBall() {
@@ -250,6 +365,12 @@ function resetBall() {
 
 function updateAI() {
     if (playerMode !== '1player' || gameState !== 'playing') return;
+    
+    // AI laser shooting in wars mode
+    if (gameMode === 'wars' && !lasers.player2 && Math.random() < 0.02) {
+        // 2% chance per frame to shoot
+        shootLaser('player2');
+    }
     
     // Predict where the ball will be
     let predictedY = ball.y;
@@ -282,25 +403,93 @@ function updateAI() {
     }
 }
 
-function updatePaddles() {
-    paddle1.dy = 0;
-    if (keys['q'] && paddle1.y > 0) {
-        paddle1.dy = -PADDLE_SPEED;
+function updateLasers() {
+    // Update player 1 laser
+    if (lasers.player1) {
+        lasers.player1.x += lasers.player1.dx;
+        
+        // Check if laser is off screen
+        if (lasers.player1.x > canvas.width) {
+            lasers.player1 = null;
+        }
+        
+        // Check collision with paddle2
+        if (lasers.player1 && 
+            lasers.player1.x + LASER_LENGTH >= paddle2.x &&
+            lasers.player1.x <= paddle2.x + paddle2.width &&
+            lasers.player1.y >= paddle2.y &&
+            lasers.player1.y <= paddle2.y + paddle2.height) {
+            
+            lasers.player1 = null;
+            paddleShake.paddle2 = { active: true, startTime: Date.now() };
+            hitSound.cloneNode().play().catch(e => console.log('Hit sound failed:', e));
+        }
     }
-    if (keys['a'] && paddle1.y < canvas.height - PADDLE_HEIGHT) {
-        paddle1.dy = PADDLE_SPEED;
+    
+    // Update player 2 laser
+    if (lasers.player2) {
+        lasers.player2.x += lasers.player2.dx;
+        
+        // Check if laser is off screen
+        if (lasers.player2.x < -LASER_LENGTH) {
+            lasers.player2 = null;
+        }
+        
+        // Check collision with paddle1
+        if (lasers.player2 &&
+            lasers.player2.x <= paddle1.x + paddle1.width &&
+            lasers.player2.x + LASER_LENGTH >= paddle1.x &&
+            lasers.player2.y >= paddle1.y &&
+            lasers.player2.y <= paddle1.y + paddle1.height) {
+            
+            lasers.player2 = null;
+            paddleShake.paddle1 = { active: true, startTime: Date.now() };
+            hitSound.cloneNode().play().catch(e => console.log('Hit sound failed:', e));
+        }
+    }
+    
+    // Update shake states
+    if (paddleShake.paddle1.active && Date.now() - paddleShake.paddle1.startTime > SHAKE_DURATION) {
+        paddleShake.paddle1.active = false;
+    }
+    if (paddleShake.paddle2.active && Date.now() - paddleShake.paddle2.startTime > SHAKE_DURATION) {
+        paddleShake.paddle2.active = false;
+    }
+}
+
+function updatePaddles() {
+    // Player 1 controls (only if not shaking)
+    if (!paddleShake.paddle1.active) {
+        paddle1.dy = 0;
+        if (keys['q'] && paddle1.y > 0) {
+            paddle1.dy = -PADDLE_SPEED;
+        }
+        if (keys['a'] && paddle1.y < canvas.height - PADDLE_HEIGHT) {
+            paddle1.dy = PADDLE_SPEED;
+        }
+    } else {
+        paddle1.dy = 0;
     }
     
     if (playerMode === '2player') {
-        paddle2.dy = 0;
-        if (keys['p'] && paddle2.y > 0) {
-            paddle2.dy = -PADDLE_SPEED;
-        }
-        if (keys['l'] && paddle2.y < canvas.height - PADDLE_HEIGHT) {
-            paddle2.dy = PADDLE_SPEED;
+        // Player 2 controls (only if not shaking)
+        if (!paddleShake.paddle2.active) {
+            paddle2.dy = 0;
+            if (keys['p'] && paddle2.y > 0) {
+                paddle2.dy = -PADDLE_SPEED;
+            }
+            if (keys['l'] && paddle2.y < canvas.height - PADDLE_HEIGHT) {
+                paddle2.dy = PADDLE_SPEED;
+            }
+        } else {
+            paddle2.dy = 0;
         }
     } else {
-        updateAI();
+        if (!paddleShake.paddle2.active) {
+            updateAI();
+        } else {
+            paddle2.dy = 0;
+        }
     }
     
     paddle1.y += paddle1.dy;
@@ -480,8 +669,9 @@ function drawTitleScreen() {
     
     // Menu options
     const options = [
-        { label: 'MODE:', value: currentTheme === 'classic' ? 'CLASSIC MODE' : 'SPATIAL MODE', y: 240 },
-        { label: 'PLAYERS:', value: playerMode === '1player' ? '1 PLAYER' : '2 PLAYERS', y: 280 }
+        { label: 'THEME:', value: currentTheme === 'classic' ? 'CLASSIC' : 'SPATIAL', y: 240 },
+        { label: 'MODE:', value: gameMode === 'pong' ? 'PONG MODE' : 'WARS MODE', y: 280 },
+        { label: 'PLAYERS:', value: playerMode === '1player' ? '1 PLAYER' : '2 PLAYERS', y: 320 }
     ];
     
     options.forEach((option, index) => {
@@ -528,7 +718,66 @@ function drawTitleScreen() {
     });
 }
 
+function drawLasers() {
+    // Draw player 1 laser
+    if (lasers.player1) {
+        ctx.save();
+        
+        if (currentTheme === 'spatial') {
+            ctx.strokeStyle = '#ff0';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ff0';
+            ctx.lineWidth = 2;
+        } else {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+        }
+        
+        ctx.beginPath();
+        ctx.moveTo(lasers.player1.x, lasers.player1.y);
+        ctx.lineTo(lasers.player1.x + LASER_LENGTH, lasers.player1.y);
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+    
+    // Draw player 2 laser
+    if (lasers.player2) {
+        ctx.save();
+        
+        if (currentTheme === 'spatial') {
+            ctx.strokeStyle = '#ff0';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ff0';
+            ctx.lineWidth = 2;
+        } else {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+        }
+        
+        ctx.beginPath();
+        ctx.moveTo(lasers.player2.x, lasers.player2.y);
+        ctx.lineTo(lasers.player2.x - LASER_LENGTH, lasers.player2.y);
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+}
+
 function drawPaddle(paddle) {
+    ctx.save();
+    
+    // Apply shake effect
+    let offsetX = 0;
+    let offsetY = 0;
+    if ((paddle === paddle1 && paddleShake.paddle1.active) || 
+        (paddle === paddle2 && paddleShake.paddle2.active)) {
+        offsetX = (Math.random() - 0.5) * 4;
+        offsetY = (Math.random() - 0.5) * 4;
+    }
+    
+    ctx.translate(offsetX, offsetY);
+    
     if (currentTheme === 'spatial') {
         // Glowing effect
         const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x + paddle.width, paddle.y);
@@ -546,6 +795,8 @@ function drawPaddle(paddle) {
         ctx.fillStyle = '#fff';
         ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
     }
+    
+    ctx.restore();
 }
 
 function drawCometTail() {
@@ -697,6 +948,9 @@ function draw() {
     drawPaddle(paddle1);
     drawPaddle(paddle2);
     drawBall();
+    if (gameMode === 'wars') {
+        drawLasers();
+    }
     drawGameState();
 }
 
@@ -709,6 +963,9 @@ function gameLoop() {
     } else {
         updatePaddles();
         updateBall();
+        if (gameMode === 'wars') {
+            updateLasers();
+        }
         if (currentTheme === 'spatial') {
             updateStars();
         }

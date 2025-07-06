@@ -94,15 +94,16 @@
         <p>Press ENTER to start the game. First to 5 points wins!</p>
         <p>Move your paddle to hit the ball back to your opponent.</p>
         <p>The ball speeds up when hit near the paddle edges!</p>
+        <p id="wars-info" style="display: none;"><strong>Wars Mode:</strong> Shoot lasers to stun your opponent for 0.5 seconds!<br>One laser per screen - wait for it to go off-screen before shooting again.</p>
         
         <div class="controls">
             <div class="player-controls">
                 <h4>Player 1 (Left)</h4>
-                <p>Q - Move Up<br>A - Move Down</p>
+                <p>Q - Move Up<br>A - Move Down<br><span id="p1-laser" style="display: none;">S - Shoot Laser</span></p>
             </div>
             <div class="player-controls" id="player2-controls">
                 <h4>Player 2 (Right)</h4>
-                <p>P - Move Up<br>L - Move Down</p>
+                <p>P - Move Up<br>L - Move Down<br><span id="p2-laser" style="display: none;">K - Shoot Laser</span></p>
             </div>
             <div class="player-controls" id="ai-controls" style="display: none;">
                 <h4>Computer (Right)</h4>
