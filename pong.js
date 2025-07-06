@@ -5,6 +5,10 @@ const ctx = canvas.getContext('2d');
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
                  (window.innerWidth <= 768);
 
+// Mac detection for performance optimizations
+const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform) || 
+              /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 // Game constants
 const PADDLE_WIDTH = 10;
 const PADDLE_HEIGHT = 80;
@@ -55,7 +59,7 @@ let currentTheme = localStorage.getItem('theme') || 'classic';
 let playerMode = localStorage.getItem('playerMode') || '1player';
 let gameMode = localStorage.getItem('gameMode') || 'pong';
 let aiDifficulty = localStorage.getItem('aiDifficulty') || 'normal';
-let particleEffects = localStorage.getItem('particleEffects') || (isMobile ? 'low' : 'high');
+let particleEffects = localStorage.getItem('particleEffects') || (isMobile || isMac ? 'low' : 'high');
 
 // Title screen state
 let menuSelection = 0; // 0 = theme, 1 = mode, 2 = players, 3 = difficulty (1 player only), 4 = particles
@@ -73,7 +77,8 @@ let NUM_TITLE_STARS = particleEffects === 'high' ? 300 : 50;
 
 function createTitleStars() {
     titleStars.length = 0;
-    NUM_TITLE_STARS = particleEffects === 'high' ? 300 : 50;
+    // Reduce particles on Mac for better performance
+    NUM_TITLE_STARS = particleEffects === 'high' ? (isMac ? 150 : 300) : 30;
     for (let i = 0; i < NUM_TITLE_STARS; i++) {
         titleStars.push({
             x: Math.random() * canvas.width,
@@ -116,7 +121,8 @@ let NUM_STARS = particleEffects === 'high' ? 200 : 50;
 
 function createStars() {
     stars.length = 0;
-    NUM_STARS = particleEffects === 'high' ? 200 : 50;
+    // Reduce particles on Mac for better performance
+    NUM_STARS = particleEffects === 'high' ? (isMac ? 100 : 200) : 30;
     for (let i = 0; i < NUM_STARS; i++) {
         stars.push({
             x: Math.random() * canvas.width,
@@ -968,10 +974,13 @@ function updateBall() {
 }
 
 function drawStarfield() {
+    // Batch star drawing for better performance
+    ctx.fillStyle = 'white';
     stars.forEach(star => {
-        ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity * 0.8})`;
+        ctx.globalAlpha = star.opacity * 0.8;
         ctx.fillRect(star.x, star.y, star.z, star.z);
     });
+    ctx.globalAlpha = 1;
 }
 
 function updateTitleStars() {
