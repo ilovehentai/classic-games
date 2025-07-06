@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="screen-orientation" content="landscape">
     <title>Pong Game</title>
     <style>
         body {
@@ -46,6 +47,64 @@
             .player-controls {
                 width: 100%;
             }
+        }
+        
+        #fullscreen-btn {
+            display: none;
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px 20px;
+            background: #0f0;
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+        
+        #fullscreen-btn:active {
+            transform: scale(0.95);
+        }
+        
+        @media (max-width: 768px) {
+            #fullscreen-btn {
+                display: block;
+            }
+        }
+        
+        /* Fullscreen styles */
+        body:fullscreen {
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        body:-webkit-full-screen {
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        body:fullscreen #instructions,
+        body:-webkit-full-screen #instructions {
+            display: none;
+        }
+        
+        body:fullscreen #gameCanvas,
+        body:-webkit-full-screen #gameCanvas {
+            border: none;
+            max-width: none;
+            max-height: 100vh;
+            width: auto;
+            height: 100vh;
         }
         
         /* Touch indicators */
@@ -144,6 +203,8 @@
 <body>
     <!-- Theme and mode selectors removed - now in title screen -->
     
+    <button id="fullscreen-btn">⛶ Fullscreen</button>
+    
     <canvas id="gameCanvas" width="800" height="400"></canvas>
     
     <div id="instructions">
@@ -170,9 +231,10 @@
         
         <div id="mobile-controls">
             <p><strong>Touch Controls:</strong><br>
-            Touch top/bottom of screen to move paddle<br>
-            <span id="mobile-laser" style="display: none;">Tap center to shoot laser<br></span>
-            Tap bottom area in menu to start</p>
+            Menu: Swipe up/down to navigate, left/right to change<br>
+            Game: Touch and drag paddle to move<br>
+            <span id="mobile-laser" style="display: none;">Tap to shoot laser<br></span>
+            Tap "FULLSCREEN" for better experience!</p>
         </div>
     </div>
     

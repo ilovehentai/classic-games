@@ -20,13 +20,23 @@ const baseWidth = 800;
 const baseHeight = 400;
 
 function resizeCanvas() {
-    const maxWidth = window.innerWidth - 40; // Account for padding
-    const maxHeight = window.innerHeight - 200; // Account for UI elements
+    const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+    
+    let maxWidth, maxHeight;
+    if (isFullscreen) {
+        // In fullscreen, use full viewport
+        maxWidth = window.innerWidth;
+        maxHeight = window.innerHeight;
+    } else {
+        // Normal mode with padding
+        maxWidth = window.innerWidth - 40;
+        maxHeight = window.innerHeight - 200;
+    }
     
     // Calculate scale to fit screen while maintaining aspect ratio
     const scaleX = maxWidth / baseWidth;
     const scaleY = maxHeight / baseHeight;
-    gameScale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond original size
+    gameScale = Math.min(scaleX, scaleY);
     
     canvas.width = baseWidth;
     canvas.height = baseHeight;
@@ -341,6 +351,16 @@ window.addEventListener('load', () => {
             updateControlDisplay();
         }
     }
+    
+    // Setup fullscreen button
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+    }
+    
+    // Handle fullscreen changes
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 });
 
 function updateLaserDisplay() {
@@ -383,27 +403,89 @@ document.addEventListener('keyup', (e) => {
     keys[e.key.toLowerCase()] = false;
 });
 
+// Fullscreen functions
+function toggleFullscreen() {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        const elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+            elem.webkitRequestFullscreen();
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+    }
+}
+
+function handleFullscreenChange() {
+    const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+    const btn = document.getElementById('fullscreen-btn');
+    if (btn) {
+        btn.textContent = isFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen';
+    }
+    // Force canvas resize in fullscreen
+    setTimeout(resizeCanvas, 100);
+}
+
+// Touch control variables for drag
+let touchDragActive = {
+    player1: false,
+    player2: false,
+    startY: 0,
+    paddleStartY: 0
+};
+
+let menuTouchStart = null;
+
 function setupTouchControls() {
     let touches = [];
     
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         touches = Array.from(e.touches);
-        updateTouchControls(touches);
         
-        // Handle laser shooting on tap in center
-        if (gameState === 'playing' && gameMode === 'wars') {
+        if (gameState === 'title') {
+            // Handle menu swipes
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            menuTouchStart = {
+                x: (touch.clientX - rect.left) / gameScale,
+                y: (touch.clientY - rect.top) / gameScale,
+                time: Date.now()
+            };
+        } else if (gameState === 'playing') {
+            // Handle paddle drag start
             touches.forEach(touch => {
                 const rect = canvas.getBoundingClientRect();
                 const x = (touch.clientX - rect.left) / gameScale;
-                const centerX = canvas.width / 2;
-                const margin = 100;
+                const y = (touch.clientY - rect.top) / gameScale;
                 
-                if (x > centerX - margin && x < centerX + margin) {
-                    const y = (touch.clientY - rect.top) / gameScale;
-                    if (y < canvas.height / 2 && !lasers.player1 && !paddleShake.paddle1.active) {
+                // Check if touching near a paddle
+                if (x < paddle1.x + paddle1.width + 50) {
+                    // Near player 1 paddle
+                    if (Math.abs(y - (paddle1.y + PADDLE_HEIGHT/2)) < 60) {
+                        touchDragActive.player1 = true;
+                        touchDragActive.startY = touch.clientY;
+                        touchDragActive.paddleStartY = paddle1.y;
+                    }
+                } else if (x > paddle2.x - 50 && playerMode === '2player') {
+                    // Near player 2 paddle
+                    if (Math.abs(y - (paddle2.y + PADDLE_HEIGHT/2)) < 60) {
+                        touchDragActive.player2 = true;
+                        touchDragActive.startY = touch.clientY;
+                        touchDragActive.paddleStartY = paddle2.y;
+                    }
+                }
+                
+                // Handle laser shooting on tap
+                if (gameMode === 'wars' && !touchDragActive.player1 && !touchDragActive.player2) {
+                    if (x < canvas.width / 2 && !lasers.player1 && !paddleShake.paddle1.active) {
                         shootLaser('player1');
-                    } else if (y >= canvas.height / 2 && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
+                    } else if (x >= canvas.width / 2 && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
                         shootLaser('player2');
                     }
                 }
@@ -414,60 +496,98 @@ function setupTouchControls() {
     canvas.addEventListener('touchmove', (e) => {
         e.preventDefault();
         touches = Array.from(e.touches);
-        updateTouchControls(touches);
+        
+        if (gameState === 'playing' && (touchDragActive.player1 || touchDragActive.player2)) {
+            // Handle paddle dragging
+            touches.forEach(touch => {
+                if (touchDragActive.player1) {
+                    const deltaY = touch.clientY - touchDragActive.startY;
+                    paddle1.y = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, 
+                                         touchDragActive.paddleStartY + deltaY / gameScale));
+                }
+                if (touchDragActive.player2) {
+                    const deltaY = touch.clientY - touchDragActive.startY;
+                    paddle2.y = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, 
+                                         touchDragActive.paddleStartY + deltaY / gameScale));
+                }
+            });
+        }
     });
     
     canvas.addEventListener('touchend', (e) => {
         e.preventDefault();
-        touches = Array.from(e.touches);
-        updateTouchControls(touches);
-    });
-    
-    // Also handle touch on title screen
-    canvas.addEventListener('touchstart', (e) => {
-        if (gameState === 'title') {
+        
+        if (gameState === 'title' && menuTouchStart) {
+            const touch = e.changedTouches[0];
             const rect = canvas.getBoundingClientRect();
-            const y = (e.touches[0].clientY - rect.top) / gameScale;
+            const endX = (touch.clientX - rect.left) / gameScale;
+            const endY = (touch.clientY - rect.top) / gameScale;
+            const deltaX = endX - menuTouchStart.x;
+            const deltaY = endY - menuTouchStart.y;
+            const deltaTime = Date.now() - menuTouchStart.time;
             
-            // Simple touch areas for menu
-            if (y > 350) {
-                // Start game
-                gameState = 'waiting';
-                startGame();
+            // Detect swipes
+            if (deltaTime < 300) { // Quick swipe
+                if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
+                    // Vertical swipe - navigate menu
+                    const maxSelection = playerMode === '1player' ? 4 : 3;
+                    if (deltaY < 0) {
+                        menuSelection = Math.max(0, menuSelection - 1);
+                    } else {
+                        menuSelection = Math.min(maxSelection, menuSelection + 1);
+                    }
+                } else if (Math.abs(deltaX) > 30) {
+                    // Horizontal swipe - change option
+                    handleMenuOptionChange(deltaX < 0 ? 'left' : 'right');
+                }
+            } else if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
+                // Tap - check if tapping start area
+                if (endY > 350) {
+                    gameState = 'waiting';
+                    startGame();
+                }
             }
+            menuTouchStart = null;
         }
+        
+        // Reset drag states
+        touchDragActive.player1 = false;
+        touchDragActive.player2 = false;
     });
 }
 
-function updateTouchControls(touches) {
-    // Reset all touch controls
-    touchControls.player1Up = false;
-    touchControls.player1Down = false;
-    touchControls.player2Up = false;
-    touchControls.player2Down = false;
-    
-    touches.forEach(touch => {
-        const rect = canvas.getBoundingClientRect();
-        const x = (touch.clientX - rect.left) / gameScale;
-        const y = (touch.clientY - rect.top) / gameScale;
-        
-        // Left side controls (Player 1)
-        if (x < canvas.width / 2) {
-            if (y < canvas.height / 2) {
-                touchControls.player1Up = true;
-            } else {
-                touchControls.player1Down = true;
-            }
+function handleMenuOptionChange(direction) {
+    if (menuSelection === 0) {
+        currentTheme = currentTheme === 'classic' ? 'spatial' : 'classic';
+        localStorage.setItem('theme', currentTheme);
+    } else if (menuSelection === 1) {
+        gameMode = gameMode === 'pong' ? 'wars' : 'pong';
+        localStorage.setItem('gameMode', gameMode);
+        updateLaserDisplay();
+    } else if (menuSelection === 2) {
+        playerMode = playerMode === '1player' ? '2player' : '1player';
+        localStorage.setItem('playerMode', playerMode);
+        updateControlDisplay();
+        // Reset menu selection if switching from 1player to 2player while on difficulty
+        if (menuSelection === 3 && playerMode === '2player') {
+            menuSelection = 2;
         }
-        // Right side controls (Player 2 in 2-player mode)
-        else if (playerMode === '2player') {
-            if (y < canvas.height / 2) {
-                touchControls.player2Up = true;
-            } else {
-                touchControls.player2Down = true;
-            }
+    } else if (menuSelection === 3 && playerMode === '1player') {
+        const difficulties = ['easy', 'normal', 'hard'];
+        let currentIndex = difficulties.indexOf(aiDifficulty);
+        if (direction === 'left') {
+            currentIndex = (currentIndex - 1 + 3) % 3;
+        } else {
+            currentIndex = (currentIndex + 1) % 3;
         }
-    });
+        aiDifficulty = difficulties[currentIndex];
+        localStorage.setItem('aiDifficulty', aiDifficulty);
+    } else if (menuSelection === (playerMode === '1player' ? 4 : 3)) {
+        particleEffects = particleEffects === 'low' ? 'high' : 'low';
+        localStorage.setItem('particleEffects', particleEffects);
+        createStars();
+        createTitleStars();
+    }
 }
 
 function handleTitleInput(e) {
