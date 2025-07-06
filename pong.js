@@ -377,6 +377,123 @@ function createHitSound() {
 const laserSound = createLaserSound();
 const hitSound = createHitSound();
 
+// Helper function to convert audio buffer to WAV
+function bufferToWave(buffer) {
+    const length = buffer.length * buffer.numberOfChannels * 2 + 44;
+    const arrayBuffer = new ArrayBuffer(length);
+    const view = new DataView(arrayBuffer);
+    const channels = [];
+    let offset = 0;
+    let pos = 0;
+    
+    // Write WAV header
+    const setUint16 = (data) => {
+        view.setUint16(pos, data, true);
+        pos += 2;
+    };
+    const setUint32 = (data) => {
+        view.setUint32(pos, data, true);
+        pos += 4;
+    };
+    
+    // RIFF chunk descriptor
+    setUint32(0x46464952); // "RIFF"
+    setUint32(length - 8); // file length - 8
+    setUint32(0x45564157); // "WAVE"
+    
+    // FMT sub-chunk
+    setUint32(0x20746d66); // "fmt "
+    setUint32(16); // subchunk size
+    setUint16(1); // PCM format
+    setUint16(buffer.numberOfChannels);
+    setUint32(buffer.sampleRate);
+    setUint32(buffer.sampleRate * 2 * buffer.numberOfChannels); // byte rate
+    setUint16(buffer.numberOfChannels * 2); // block align
+    setUint16(16); // bits per sample
+    
+    // Data sub-chunk
+    setUint32(0x61746164); // "data"
+    setUint32(length - pos - 4); // subchunk size
+    
+    // Write interleaved data
+    const interleaved = new Float32Array(buffer.length * buffer.numberOfChannels);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        channels[channel] = buffer.getChannelData(channel);
+    }
+    
+    offset = 0;
+    for (let i = 0; i < buffer.length; i++) {
+        for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            interleaved[offset++] = channels[channel][i];
+        }
+    }
+    
+    // Convert float samples to 16-bit PCM
+    offset = 0;
+    for (let i = 0; i < interleaved.length; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, interleaved[i]));
+        view.setInt16(pos + offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    
+    return arrayBuffer;
+}
+
+// Create robot voice for "Ready!"
+function createReadySound() {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const duration = 0.8;
+    const sampleRate = audioContext.sampleRate;
+    const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Generate robotic "Ready!" sound
+    // Using formant synthesis approach
+    const syllables = [
+        { start: 0, end: 0.3, freq: 200, mod: 50 },    // "Rea"
+        { start: 0.3, end: 0.6, freq: 250, mod: 80 }   // "dy!"
+    ];
+    
+    for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        let sample = 0;
+        
+        // Find which syllable we're in
+        for (const syl of syllables) {
+            if (t >= syl.start && t < syl.end) {
+                const syllableT = (t - syl.start) / (syl.end - syl.start);
+                
+                // Envelope
+                const env = Math.sin(syllableT * Math.PI) * 0.8;
+                
+                // Base frequency with vibrato
+                const vibrato = Math.sin(t * 20) * 5;
+                const baseFreq = syl.freq + vibrato;
+                
+                // Harmonics for robotic sound
+                sample += Math.sin(2 * Math.PI * baseFreq * t) * env * 0.3;
+                sample += Math.sin(2 * Math.PI * baseFreq * 2 * t) * env * 0.2;
+                sample += Math.sin(2 * Math.PI * baseFreq * 3 * t) * env * 0.1;
+                
+                // Modulation for robotic effect
+                sample *= (1 + Math.sin(2 * Math.PI * syl.mod * t) * 0.5);
+                
+                // Add some noise
+                sample += (Math.random() - 0.5) * env * 0.05;
+            }
+        }
+        
+        data[i] = sample;
+    }
+    
+    // Create audio element
+    const blob = new Blob([bufferToWave(buffer)], { type: 'audio/wav' });
+    const audio = new Audio(URL.createObjectURL(blob));
+    audio.volume = 0.7;
+    return audio;
+}
+
+const readySound = createReadySound();
+
 const keys = {};
 
 // Touch control state
@@ -600,8 +717,10 @@ function setupTouchControls() {
                 }
             } else if (endY > 350) {
                 // Start game
-                gameState = 'waiting';
+                gameState = 'ready';
+                readyStartTime = Date.now();
                 startGame();
+                readySound.cloneNode().play().catch(e => console.log('Ready sound failed:', e));
             }
             
             menuTouchStart = null;
@@ -732,8 +851,11 @@ function handleTitleInput(e) {
                 inOptionsMenu = true;
                 optionsMenuSelection = 0;
             } else {
-                gameState = 'waiting';
+                // Start the ready sequence
+                gameState = 'ready';
+                readyStartTime = Date.now();
                 startGame();
+                readySound.cloneNode().play().catch(e => console.log('Ready sound failed:', e));
             }
             break;
     }
@@ -884,7 +1006,6 @@ function updateControlDisplay() {
 }
 
 function startGame() {
-    gameState = 'playing';
     player1Score = 0;
     player2Score = 0;
     resetBall();
@@ -1759,6 +1880,46 @@ function drawTouchZones() {
     ctx.restore();
 }
 
+function drawReady() {
+    // Background
+    if (currentTheme === 'spatial') {
+        ctx.fillStyle = '#000011';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawStarfield();
+    } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    drawCenterLine();
+    drawScore();
+    drawPaddle(paddle1);
+    drawPaddle(paddle2);
+    drawBall();
+    
+    // Draw "READY!" text
+    ctx.font = 'bold 80px Courier New';
+    ctx.textAlign = 'center';
+    
+    const elapsed = Date.now() - readyStartTime;
+    const opacity = Math.max(0, 1 - ((elapsed - 1000) / 1000)); // Stay solid for 1s, then fade for 1s
+    
+    if (currentTheme === 'spatial') {
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = `rgba(255, 255, 0, ${opacity})`;
+        ctx.fillStyle = `rgba(255, 255, 0, ${opacity})`;
+    } else {
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+    }
+    
+    ctx.fillText('READY!', canvas.width / 2, canvas.height / 2);
+    ctx.shadowBlur = 0;
+    
+    // Transition to playing after 2 seconds
+    if (elapsed >= 2000) {
+        gameState = 'playing';
+    }
+}
+
 function draw() {
     if (currentTheme === 'spatial') {
         // Dark space background
@@ -1787,6 +1948,12 @@ function gameLoop() {
             updateTitleStars();
         }
         drawTitleScreen();
+    } else if (gameState === 'ready') {
+        // During ready state, don't update game objects
+        if (currentTheme === 'spatial') {
+            updateStars();
+        }
+        drawReady();
     } else {
         updatePaddles();
         updateBall();
