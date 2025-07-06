@@ -76,6 +76,13 @@
             }
         }
         
+        /* Hide fullscreen button on iOS devices */
+        @supports (-webkit-touch-callout: none) {
+            #fullscreen-btn {
+                display: none !important;
+            }
+        }
+        
         /* Fullscreen styles */
         body:fullscreen {
             padding: 0;
@@ -231,10 +238,9 @@
         
         <div id="mobile-controls">
             <p><strong>Touch Controls:</strong><br>
-            Menu: Swipe up/down to navigate, left/right to change<br>
+            Menu: Tap arrows < > to change options<br>
             Game: Touch and drag paddle to move<br>
-            <span id="mobile-laser" style="display: none;">Tap to shoot laser<br></span>
-            Tap "FULLSCREEN" for better experience!</p>
+            <span id="mobile-laser" style="display: none;">Tap to shoot laser<br></span></p>
         </div>
     </div>
     
