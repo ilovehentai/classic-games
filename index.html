@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pong Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        #gameCanvas {
+            border: 2px solid #fff;
+            display: block;
+        }
+        
+        #instructions {
+            margin-top: 20px;
+            text-align: center;
+            line-height: 1.6;
+        }
+        
+        #instructions h3 {
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 40px;
+            margin-top: 10px;
+        }
+        
+        .player-controls {
+            text-align: center;
+            width: 50%;
+        }
+        
+        .player-controls h4 {
+            margin: 0 0 5px 0;
+            color: #0f0;
+        }
+        
+        .theme-switcher {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 16px;
+        }
+        
+        .theme-options {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .theme-options label {
+            cursor: pointer;
+            padding: 5px 15px;
+            border: 2px solid #333;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .theme-options input[type="radio"] {
+            display: none;
+        }
+        
+        .theme-options input[type="radio"]:checked + label {
+            background-color: #0f0;
+            color: #000;
+            border-color: #0f0;
+            box-shadow: 0 0 10px #0f0;
+        }
+        
+        .theme-options label:hover {
+            border-color: #666;
+        }
+    </style>
+</head>
+<body>
+    <!-- Theme and mode selectors removed - now in title screen -->
+    
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div id="instructions">
+        <h3>How to Play</h3>
+        <p>Press ENTER to start the game. First to 5 points wins!</p>
+        <p>Move your paddle to hit the ball back to your opponent.</p>
+        <p>The ball speeds up when hit near the paddle edges!</p>
+        
+        <div class="controls">
+            <div class="player-controls">
+                <h4>Player 1 (Left)</h4>
+                <p>Q - Move Up<br>A - Move Down</p>
+            </div>
+            <div class="player-controls" id="player2-controls">
+                <h4>Player 2 (Right)</h4>
+                <p>P - Move Up<br>L - Move Down</p>
+            </div>
+            <div class="player-controls" id="ai-controls" style="display: none;">
+                <h4>Computer (Right)</h4>
+                <p>AI Controlled</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="pong.js"></script>
+</body>
+</html>
