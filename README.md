@@ -30,37 +30,61 @@ A modern take on the classic Pong game with multiple game modes, visual themes, 
 ### Gameplay Features
 - **Dynamic ball physics**: Ball speed increases based on paddle hit location
 - **Edge hits**: Hitting the ball with the paddle edge increases speed and angle
-- **Score tracking**: First to 5 points wins
-- **Persistent settings**: Theme, game mode, and player preferences are saved locally
+- **Score tracking**: Customizable victory points (3, 5, 7, 10, 15, or 20 points)
+- **Persistent settings**: Theme, game mode, player preferences, and controls are saved locally
+- **Particle effects**: Adjustable visual effects density (Low/High)
+- **Ready countdown**: "Ready!" message with synthesized robot voice before game starts
+- **Pause functionality**: Press ESC to pause during gameplay (desktop only)
+- **Mobile support**: Full touch controls and responsive design
 
 ## Controls
 
 ### Menu Navigation
 - **↑/↓**: Navigate between options
 - **←/→**: Change selected option
-- **Enter**: Start game
+- **Enter**: Start game or enter Options menu
+- **ESC**: Go back (in Options menu)
 
-### Player 1 (Left Paddle)
-- **Q**: Move up
-- **A**: Move down
-- **S**: Shoot laser (Wars mode only)
+### During Gameplay
+- **ESC**: Pause game (press again to quit to menu)
+- **Enter**: Resume game (when paused)
 
-### Player 2 (Right Paddle)
-- **P**: Move up
-- **L**: Move down
-- **K**: Shoot laser (Wars mode only)
+### Player 1 (Left Paddle) - Default Controls
+- **Q**: Move up (customizable)
+- **A**: Move down (customizable)
+- **S**: Shoot laser - Wars mode only (customizable)
+
+### Player 2 (Right Paddle) - Default Controls
+- **P**: Move up (customizable)
+- **L**: Move down (customizable)
+- **K**: Shoot laser - Wars mode only (customizable)
 
 *Note: In 1 Player mode, the right paddle is AI-controlled*
+
+### Mobile Controls
+- **Touch and drag**: Move paddles
+- **Tap**: Shoot laser (Wars mode)
+- **Tap arrows**: Navigate menu options
+- **Tap anywhere**: Continue after game over
 
 ## How to Play
 
 1. Open `index.html` in a modern web browser
-2. Use arrow keys to select your preferred theme, game mode, and player count
-3. Press Enter to start
-4. Control your paddle to hit the ball back
-5. In Wars mode, strategically use lasers to stun your opponent
-6. Score points when your opponent misses
-7. First to 5 points wins!
+2. Main menu options:
+   - **Theme**: Classic or Spatial visual style
+   - **Mode**: Traditional Pong or Wars mode with lasers
+   - **Players**: 1 Player (vs AI) or 2 Players
+   - **Options**: Access additional settings
+3. Options menu includes:
+   - **Difficulty**: AI difficulty (1 Player mode only)
+   - **Particles**: Visual effects density
+   - **Points for Victory**: Set winning score
+   - **Set Controls**: Customize keyboard controls (desktop only)
+4. Press Enter to start (or tap on mobile)
+5. Control your paddle to hit the ball back
+6. In Wars mode, strategically use lasers to stun your opponent
+7. Score points when your opponent misses
+8. First to reach the victory points wins!
 
 ## Technical Details
 
@@ -71,11 +95,14 @@ A modern take on the classic Pong game with multiple game modes, visual themes, 
 - **LocalStorage**: Settings persistence
 
 ### Game Architecture
-- **Title Screen**: Interactive menu with visual theme preview
-- **Game States**: Title → Playing → Game Over → Title
+- **Title Screen**: Interactive menu with visual theme preview and hint system
+- **Options Menu**: Comprehensive settings with customizable controls
+- **Game States**: Title → Ready → Playing → Game Over → Title (with Pause state)
 - **60 FPS**: Smooth gameplay using requestAnimationFrame
 - **Responsive Physics**: Angle-based ball acceleration
 - **Wars Mode**: Laser shooting and stun mechanics
+- **Mobile Responsive**: Full-screen canvas with touch controls
+- **Audio System**: Synthesized sounds including robot voice announcements
 
 ### AI Implementation
 The AI opponent features:
@@ -121,14 +148,40 @@ pongze/
 
 *Requires a modern browser with HTML5 Canvas and Web Audio API support*
 
+## Mobile Support
+
+### Features
+- **Full touch controls**: Drag to move paddles, tap to shoot lasers
+- **Responsive design**: Automatically scales to fit any screen size
+- **Orientation detection**: Prompts to rotate device for best experience
+- **Mobile-optimized UI**: Larger touch targets and adapted interface
+- **Performance optimization**: Reduced particle effects on mobile devices
+
+### Mobile-Specific Instructions
+- Game works best in landscape orientation
+- Tap anywhere to continue after game over
+- Touch and drag near paddles to control them
+- Tap on your side of the screen to shoot lasers in Wars mode
+
+## Recent Updates
+
+### New Features
+- **Customizable Controls**: Set your own keyboard keys for each action
+- **Variable Victory Points**: Choose from 3 to 20 points for game length
+- **Pause System**: ESC to pause, with resume/quit options
+- **Ready Countdown**: "Ready!" announcement with robot voice
+- **Enhanced Mobile Support**: Full touch controls and responsive design
+- **Improved Menu System**: Cleaner layout with helpful hints
+- **Options Menu**: Centralized settings management
+
 ## Future Enhancements
 Potential features for future versions:
-- Power-ups
-- Different AI difficulty levels
-- Online multiplayer
-- Tournament mode
-- Custom themes
-- Mobile touch controls
+- Power-ups and special abilities
+- Online multiplayer support
+- Tournament mode with brackets
+- Additional themes and customization
+- Leaderboards and statistics
+- Sound volume controls
 
 ---
 
