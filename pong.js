@@ -9,22 +9,96 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform) || 
               /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-// Game constants
+// Game constants (base values for 800x400 resolution)
 const PADDLE_WIDTH = 10;
 const PADDLE_HEIGHT = 80;
 const BALL_SIZE = 10;
-const PADDLE_SPEED = 5;
-const INITIAL_BALL_SPEED = 5;
-const MAX_BALL_SPEED = 15;
+// Convert speeds to pixels per second (assuming 60 FPS baseline)
+const PADDLE_SPEED = 300; // pixels per second (was 5 * 60)
+const INITIAL_BALL_SPEED = 300; // pixels per second (was 5 * 60)
+const MAX_BALL_SPEED = 900; // pixels per second (was 15 * 60)
 let WINNING_SCORE = parseInt(localStorage.getItem('winningScore') || '5');
+
+// Frame rate limiting
+const TARGET_FPS = 60;
+const FRAME_TIME = 1000 / TARGET_FPS;
+let lastFrameTime = 0;
+let deltaTime = 0;
+let fps = 0;
+let frameCount = 0;
+let lastFpsUpdate = 0;
+let showFPS = false;
 
 // Canvas sizing
 let gameScale = 1;
-const baseWidth = 800;
-const baseHeight = 400;
+let baseWidth = 800;
+let baseHeight = 400;
 
 // Mobile orientation check
 let orientationWarningShown = false;
+
+// Auto-detect best resolution based on screen size
+function detectBestResolution() {
+    const screenWidth = window.screen.width * window.devicePixelRatio;
+    
+    if (isMobile) {
+        return screenWidth > 1200 ? 'medium' : 'low';
+    } else if (screenWidth >= 3840) {
+        return 'ultra';
+    } else if (screenWidth >= 2560) {
+        return 'high';
+    } else if (screenWidth >= 1920) {
+        return 'medium';
+    } else {
+        return 'low';
+    }
+}
+
+// Set active resolution
+function setResolution(res) {
+    if (res === 'auto') {
+        res = detectBestResolution();
+    }
+    
+    activeResolution = RESOLUTIONS[res] || RESOLUTIONS.low;
+    
+    // Update canvas internal resolution for higher quality
+    canvas.width = activeResolution.width;
+    canvas.height = activeResolution.height;
+    
+    // Keep logical coordinates at 800x400
+    baseWidth = 800;
+    baseHeight = 400;
+    
+    // Reinitialize game objects
+    initializeGameObjects();
+    
+    // Trigger resize to update display size
+    resizeCanvas();
+}
+
+// Initialize game objects - keep same logical sizes
+function initializeGameObjects() {
+    // Reset to base positions - no scaling needed
+    paddle1.x = 20;
+    paddle1.y = baseHeight / 2 - PADDLE_HEIGHT / 2;
+    paddle1.width = PADDLE_WIDTH;
+    paddle1.height = PADDLE_HEIGHT;
+    
+    paddle2.x = baseWidth - 30;
+    paddle2.y = baseHeight / 2 - PADDLE_HEIGHT / 2;
+    paddle2.width = PADDLE_WIDTH;
+    paddle2.height = PADDLE_HEIGHT;
+    
+    // Reset ball
+    ball.x = baseWidth / 2;
+    ball.y = baseHeight / 2;
+    ball.size = BALL_SIZE;
+    
+    // Recreate stars with new canvas size
+    createStars();
+    createTitleStars();
+}
 
 function resizeCanvas() {
     const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
@@ -69,8 +143,8 @@ function resizeCanvas() {
         gameScale = 0.5;
     }
     
-    canvas.width = baseWidth;
-    canvas.height = baseHeight;
+    // Canvas internal resolution is set by setResolution()
+    // Here we only update the display size
     canvas.style.width = (baseWidth * gameScale) + 'px';
     canvas.style.height = (baseHeight * gameScale) + 'px';
     
@@ -89,6 +163,17 @@ let player1Score = 0;
 let player2Score = 0;
 let isPaused = false;
 let readyStartTime = 0;
+
+// Resolution settings
+const RESOLUTIONS = {
+    low: { width: 800, height: 400, scale: 1 },
+    medium: { width: 1200, height: 600, scale: 1.5 },
+    high: { width: 1600, height: 800, scale: 2 },
+    ultra: { width: 2400, height: 1200, scale: 3 }
+};
+
+let currentResolution = localStorage.getItem('resolution') || 'auto';
+let activeResolution = RESOLUTIONS.low; // Start with low, will be set properly on init
 let currentTheme = localStorage.getItem('theme') || 'classic';
 let playerMode = localStorage.getItem('playerMode') || '1player';
 let gameMode = localStorage.getItem('gameMode') || 'pong';
@@ -105,7 +190,8 @@ const menuOptions = {
     players: ['1player', '2player'],
     difficulty: ['easy', 'normal', 'hard'],
     particles: ['low', 'high'],
-    winningScore: [3, 5, 7, 10, 15, 20]
+    winningScore: [3, 5, 7, 10, 15, 20],
+    resolution: ['auto', 'low', 'medium', 'high', 'ultra']
 };
 
 // Custom controls
@@ -137,6 +223,7 @@ const menuHints = {
         "AI difficulty - Easy, Normal, or Hard",
         "Visual effects density - Low for performance, High for beauty",
         "Set points needed to win - from quick 3-point games to epic 20-point battles",
+        "Game resolution - Auto detects best, or choose Low/Medium/High/Ultra",
         "Customize Player 1 keyboard controls",
         "Customize Player 2 keyboard controls"
     ]
@@ -152,8 +239,8 @@ function createTitleStars() {
     NUM_TITLE_STARS = particleEffects === 'high' ? (isMac ? 150 : 300) : 30;
     for (let i = 0; i < NUM_TITLE_STARS; i++) {
         titleStars.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
+            x: Math.random() * baseWidth,
+            y: Math.random() * baseHeight,
             z: Math.random() * 1000,
             speed: Math.random() * 0.5 + 0.1
         });
@@ -196,8 +283,8 @@ function createStars() {
     NUM_STARS = particleEffects === 'high' ? (isMac ? 100 : 200) : 30;
     for (let i = 0; i < NUM_STARS; i++) {
         stars.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
+            x: Math.random() * baseWidth,
+            y: Math.random() * baseHeight,
             z: Math.random() * 3 + 1,
             opacity: Math.random()
         });
@@ -207,23 +294,23 @@ createStars();
 
 const paddle1 = {
     x: 20,
-    y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+    y: baseHeight / 2 - PADDLE_HEIGHT / 2,
     width: PADDLE_WIDTH,
     height: PADDLE_HEIGHT,
     dy: 0
 };
 
 const paddle2 = {
-    x: canvas.width - 30,
-    y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+    x: baseWidth - 30,
+    y: baseHeight / 2 - PADDLE_HEIGHT / 2,
     width: PADDLE_WIDTH,
     height: PADDLE_HEIGHT,
     dy: 0
 };
 
 const ball = {
-    x: canvas.width / 2,
-    y: canvas.height / 2,
+    x: baseWidth / 2,
+    y: baseHeight / 2,
     size: BALL_SIZE,
     dx: INITIAL_BALL_SPEED,
     dy: 0
@@ -234,7 +321,7 @@ const ballTrail = [];
 const MAX_TRAIL_LENGTH = 20;
 
 // Laser mechanics
-const LASER_SPEED = 10;
+const LASER_SPEED = 600; // pixels per second (was 10 * 60)
 const LASER_LENGTH = 30;
 const SHAKE_DURATION = 500; // ms
 const lasers = {
@@ -247,6 +334,15 @@ const paddleShake = {
     paddle1: { active: false, startTime: 0 },
     paddle2: { active: false, startTime: 0 }
 };
+
+// Get scaled values based on resolution
+function getScaled(value) {
+    return value * activeResolution.scale;
+}
+
+function getFontSize(base) {
+    return Math.round(base * activeResolution.scale);
+}
 
 const pongSound = new Audio();
 pongSound.src = 'data:audio/wav;base64,UklGRigFAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQFAACfAACgAACgAACfAACgAACgAAB/AAB/AAB/AAB/AAB/AAB/AACfAACgAACgAACfAACgAACgAAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAACAAAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/AAB/';
@@ -551,6 +647,9 @@ const touchControls = {
 
 // Set initial control display
 window.addEventListener('load', () => {
+    // Initialize resolution
+    setResolution(currentResolution);
+    
     updateControlDisplay();
     updateLaserDisplay();
     if (isMobile) {
@@ -598,6 +697,9 @@ document.addEventListener('keydown', (e) => {
         } else if (isPaused && e.key === 'Enter') {
             // Resume game
             isPaused = false;
+        } else if (e.key === 'F3') {
+            e.preventDefault();
+            showFPS = !showFPS;
         } else if (!isPaused && gameMode === 'wars') {
             // Handle laser shooting with custom controls
             if (e.key.toLowerCase() === customControls.player1.shoot && !lasers.player1 && !paddleShake.paddle1.active) {
@@ -662,9 +764,9 @@ function setupTouchControls() {
             // Handle menu touches for both main menu and options
             const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
-            // Convert touch coordinates to canvas coordinates
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            // Convert touch coordinates to logical coordinates (800x400)
+            const scaleX = baseWidth / rect.width;
+            const scaleY = baseHeight / rect.height;
             menuTouchStart = {
                 x: (touch.clientX - rect.left) * scaleX,
                 y: (touch.clientY - rect.top) * scaleY,
@@ -674,8 +776,8 @@ function setupTouchControls() {
             // Handle paddle drag start
             touches.forEach(touch => {
                 const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
+                const scaleX = baseWidth / rect.width;
+                const scaleY = baseHeight / rect.height;
                 const x = (touch.clientX - rect.left) * scaleX;
                 const y = (touch.clientY - rect.top) * scaleY;
                 
@@ -698,9 +800,9 @@ function setupTouchControls() {
                 
                 // Handle laser shooting on tap
                 if (gameMode === 'wars' && !touchDragActive.player1 && !touchDragActive.player2) {
-                    if (x < canvas.width / 2 && !lasers.player1 && !paddleShake.paddle1.active) {
+                    if (x < baseWidth / 2 && !lasers.player1 && !paddleShake.paddle1.active) {
                         shootLaser('player1');
-                    } else if (x >= canvas.width / 2 && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
+                    } else if (x >= baseWidth / 2 && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
                         shootLaser('player2');
                     }
                 }
@@ -717,12 +819,12 @@ function setupTouchControls() {
             touches.forEach(touch => {
                 if (touchDragActive.player1) {
                     const deltaY = touch.clientY - touchDragActive.startY;
-                    paddle1.y = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, 
+                    paddle1.y = Math.max(0, Math.min(baseHeight - PADDLE_HEIGHT, 
                                          touchDragActive.paddleStartY + deltaY / gameScale));
                 }
                 if (touchDragActive.player2) {
                     const deltaY = touch.clientY - touchDragActive.startY;
-                    paddle2.y = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, 
+                    paddle2.y = Math.max(0, Math.min(baseHeight - PADDLE_HEIGHT, 
                                          touchDragActive.paddleStartY + deltaY / gameScale));
                 }
             });
@@ -736,8 +838,8 @@ function setupTouchControls() {
             const touch = e.changedTouches[0];
             const rect = canvas.getBoundingClientRect();
             // Convert touch coordinates to canvas coordinates
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            const scaleX = baseWidth / rect.width;
+            const scaleY = baseHeight / rect.height;
             const endX = (touch.clientX - rect.left) * scaleX;
             const endY = (touch.clientY - rect.top) * scaleY;
             
@@ -770,7 +872,7 @@ function setupTouchControls() {
                     optionsMenuSelection = 0;
                 } else {
                     // Check if tapped on arrows for other options
-                    const centerX = canvas.width / 2 + 30;
+                    const centerX = baseWidth / 2 + 30;
                     const optionWidth = 200; // Wider hit area
                     
                     if (endX < centerX - 20) {
@@ -801,8 +903,8 @@ function setupTouchControls() {
             // Handle options menu touches
             const touch = e.changedTouches[0];
             const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            const scaleX = baseWidth / rect.width;
+            const scaleY = baseHeight / rect.height;
             const endX = (touch.clientX - rect.left) * scaleX;
             const endY = (touch.clientY - rect.top) * scaleY;
             
@@ -825,7 +927,7 @@ function setupTouchControls() {
                 optionsMenuSelection = optionIndex;
                 
                 // Handle the tap based on option type
-                const centerX = canvas.width / 2 + 80;
+                const centerX = baseWidth / 2 + 80;
                 
                 if (endX < centerX - 30) {
                     // Left arrow
@@ -850,11 +952,11 @@ function setupTouchControls() {
             if (isMobile) {
                 const touch = e.changedTouches[0];
                 const rect = canvas.getBoundingClientRect();
-                const scaleY = canvas.height / rect.height;
+                const scaleY = baseHeight / rect.height;
                 const endY = (touch.clientY - rect.top) * scaleY;
                 
                 // Check which option was tapped
-                const centerY = canvas.height / 2;
+                const centerY = baseHeight / 2;
                 if (Math.abs(endY - (centerY + 20)) < 30) {
                     // Resume tapped
                     isPaused = false;
@@ -1002,7 +1104,7 @@ function handleTitleInput(e) {
 }
 
 function handleOptionsInput(e) {
-    const maxSelection = playerMode === '1player' ? (isMobile ? 2 : 4) : (isMobile ? 1 : 3);
+    const maxSelection = playerMode === '1player' ? (isMobile ? 3 : 5) : (isMobile ? 2 : 4);
     
     switch(e.key) {
         case 'Escape':
@@ -1043,6 +1145,14 @@ function handleOptionsInput(e) {
                 let newIndex = (currentIndex + direction + scores.length) % scores.length;
                 WINNING_SCORE = scores[newIndex];
                 localStorage.setItem('winningScore', WINNING_SCORE.toString());
+            } else if ((currentOption === 3 && playerMode === '1player') || (currentOption === 2 && playerMode === '2player')) {
+                // Resolution
+                const resolutions = menuOptions.resolution;
+                const currentIndex = resolutions.indexOf(currentResolution);
+                let newIndex = (currentIndex + direction + resolutions.length) % resolutions.length;
+                currentResolution = resolutions[newIndex];
+                localStorage.setItem('resolution', currentResolution);
+                setResolution(currentResolution);
             }
             break;
         case 'Enter':
@@ -1052,10 +1162,10 @@ function handleOptionsInput(e) {
             }
             
             if (!isMobile) {
-                if ((currentOptIdx === 3 && playerMode === '1player') || (currentOptIdx === 2 && playerMode === '2player')) {
+                if ((currentOptIdx === 4 && playerMode === '1player') || (currentOptIdx === 3 && playerMode === '2player')) {
                     // Set controls P1
                     showControlsMenu('player1');
-                } else if ((currentOptIdx === 4 && playerMode === '1player') || (currentOptIdx === 3 && playerMode === '2player')) {
+                } else if ((currentOptIdx === 5 && playerMode === '1player') || (currentOptIdx === 4 && playerMode === '2player')) {
                     // Set controls P2
                     showControlsMenu('player2');
                 }
@@ -1074,19 +1184,19 @@ function showControlsMenu(player) {
         // Background
         if (currentTheme === 'spatial') {
             ctx.fillStyle = '#000011';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, baseWidth, baseHeight);
         } else {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, baseWidth, baseHeight);
         }
         
         // Title
         ctx.font = 'bold 30px Courier New';
         ctx.textAlign = 'center';
         ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-        ctx.fillText(`${player.toUpperCase()} CONTROLS`, canvas.width / 2, 80);
+        ctx.fillText(`${player.toUpperCase()} CONTROLS`, baseWidth / 2, 80);
         
         ctx.font = '16px Courier New';
-        ctx.fillText('PRESS KEY TO SET OR ESC TO BACK', canvas.width / 2, 120);
+        ctx.fillText('PRESS KEY TO SET OR ESC TO BACK', baseWidth / 2, 120);
         
         const baseY = 180;
         const spacing = 40;
@@ -1105,13 +1215,13 @@ function showControlsMenu(player) {
             ctx.font = isSelected ? 'bold 20px Courier New' : '20px Courier New';
             ctx.textAlign = 'right';
             ctx.fillStyle = currentTheme === 'spatial' ? (isSelected ? '#ff0' : '#0ff') : '#fff';
-            ctx.fillText(option.label, canvas.width / 2 - 50, y);
+            ctx.fillText(option.label, baseWidth / 2 - 50, y);
             
             ctx.textAlign = 'center';
-            ctx.fillText(option.value, canvas.width / 2 + 50, y);
+            ctx.fillText(option.value, baseWidth / 2 + 50, y);
             
             if (isSelected) {
-                ctx.fillText('>', canvas.width / 2 - 100, y);
+                ctx.fillText('>', baseWidth / 2 - 100, y);
             }
         });
     };
@@ -1170,10 +1280,10 @@ function shootLaser(player) {
 }
 
 function resetBall() {
-    ball.x = canvas.width / 2;
-    ball.y = canvas.height / 2;
+    ball.x = baseWidth / 2;
+    ball.y = baseHeight / 2;
     ball.dx = (Math.random() > 0.5 ? 1 : -1) * INITIAL_BALL_SPEED;
-    ball.dy = (Math.random() - 0.5) * 2;
+    ball.dy = (Math.random() - 0.5) * INITIAL_BALL_SPEED * 0.4; // Random vertical component
     ballTrail.length = 0; // Clear trail when ball resets
 }
 
@@ -1220,12 +1330,14 @@ function updateAI() {
 }
 
 function updateLasers() {
+    const laserMovement = deltaTime / 1000; // Convert to seconds
+    
     // Update player 1 laser
     if (lasers.player1) {
-        lasers.player1.x += lasers.player1.dx;
+        lasers.player1.x += lasers.player1.dx * laserMovement;
         
         // Check if laser is off screen
-        if (lasers.player1.x > canvas.width) {
+        if (lasers.player1.x > baseWidth) {
             lasers.player1 = null;
         }
         
@@ -1244,7 +1356,7 @@ function updateLasers() {
     
     // Update player 2 laser
     if (lasers.player2) {
-        lasers.player2.x += lasers.player2.dx;
+        lasers.player2.x += lasers.player2.dx * laserMovement;
         
         // Check if laser is off screen
         if (lasers.player2.x < -LASER_LENGTH) {
@@ -1280,7 +1392,7 @@ function updatePaddles() {
         if ((keys[customControls.player1.up] || touchControls.player1Up) && paddle1.y > 0) {
             paddle1.dy = -PADDLE_SPEED;
         }
-        if ((keys[customControls.player1.down] || touchControls.player1Down) && paddle1.y < canvas.height - PADDLE_HEIGHT) {
+        if ((keys[customControls.player1.down] || touchControls.player1Down) && paddle1.y < baseHeight - PADDLE_HEIGHT) {
             paddle1.dy = PADDLE_SPEED;
         }
     } else {
@@ -1294,7 +1406,7 @@ function updatePaddles() {
             if ((keys[customControls.player2.up] || touchControls.player2Up) && paddle2.y > 0) {
                 paddle2.dy = -PADDLE_SPEED;
             }
-            if ((keys[customControls.player2.down] || touchControls.player2Down) && paddle2.y < canvas.height - PADDLE_HEIGHT) {
+            if ((keys[customControls.player2.down] || touchControls.player2Down) && paddle2.y < baseHeight - PADDLE_HEIGHT) {
                 paddle2.dy = PADDLE_SPEED;
             }
         } else {
@@ -1308,11 +1420,14 @@ function updatePaddles() {
         }
     }
     
-    paddle1.y += paddle1.dy;
-    paddle2.y += paddle2.dy;
+    // Apply movement with delta time
+    const paddleMovement = deltaTime / 1000; // Convert to seconds
+    paddle1.y += paddle1.dy * paddleMovement;
+    paddle2.y += paddle2.dy * paddleMovement;
     
-    paddle1.y = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, paddle1.y));
-    paddle2.y = Math.max(0, Math.min(canvas.height - PADDLE_HEIGHT, paddle2.y));
+    // Keep paddles in bounds (using logical coordinates)
+    paddle1.y = Math.max(0, Math.min(baseHeight - PADDLE_HEIGHT, paddle1.y));
+    paddle2.y = Math.max(0, Math.min(baseHeight - PADDLE_HEIGHT, paddle2.y));
 }
 
 function checkCollision(ball, paddle) {
@@ -1326,8 +1441,8 @@ function updateStars() {
     stars.forEach(star => {
         star.x -= star.z * 0.5;
         if (star.x < 0) {
-            star.x = canvas.width;
-            star.y = Math.random() * canvas.height;
+            star.x = baseWidth;
+            star.y = Math.random() * baseHeight;
             star.z = Math.random() * 3 + 1;
         }
         star.opacity = Math.sin(Date.now() * 0.001 + star.x * 0.01) * 0.5 + 0.5;
@@ -1354,20 +1469,23 @@ function updateBall() {
         ballTrail.forEach(point => point.age++);
     }
     
-    ball.x += ball.dx;
-    ball.y += ball.dy;
+    // Apply movement with delta time
+    const ballMovement = deltaTime / 1000; // Convert to seconds
+    ball.x += ball.dx * ballMovement;
+    ball.y += ball.dy * ballMovement;
     
-    if (ball.y <= 0 || ball.y >= canvas.height - ball.size) {
+    if (ball.y <= 0 || ball.y >= baseHeight - ball.size) {
         ball.dy = -ball.dy;
     }
     
     if (checkCollision(ball, paddle1)) {
         if (ball.dx < 0) {
-            const relativeIntersectY = (paddle1.y + PADDLE_HEIGHT / 2) - (ball.y + ball.size / 2);
-            const normalizedRelativeIntersectionY = relativeIntersectY / (PADDLE_HEIGHT / 2);
+            const relativeIntersectY = (paddle1.y + paddle1.height / 2) - (ball.y + ball.size / 2);
+            const normalizedRelativeIntersectionY = relativeIntersectY / (paddle1.height / 2);
             const bounceAngle = normalizedRelativeIntersectionY * Math.PI / 4;
             
-            const speed = Math.min(MAX_BALL_SPEED, Math.abs(ball.dx) + Math.abs(normalizedRelativeIntersectionY) * 2);
+            const currentSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+            const speed = Math.min(MAX_BALL_SPEED, currentSpeed + Math.abs(normalizedRelativeIntersectionY) * 120);
             ball.dx = speed * Math.cos(bounceAngle);
             ball.dy = speed * -Math.sin(bounceAngle);
             
@@ -1383,11 +1501,12 @@ function updateBall() {
     
     if (checkCollision(ball, paddle2)) {
         if (ball.dx > 0) {
-            const relativeIntersectY = (paddle2.y + PADDLE_HEIGHT / 2) - (ball.y + ball.size / 2);
-            const normalizedRelativeIntersectionY = relativeIntersectY / (PADDLE_HEIGHT / 2);
+            const relativeIntersectY = (paddle2.y + paddle2.height / 2) - (ball.y + ball.size / 2);
+            const normalizedRelativeIntersectionY = relativeIntersectY / (paddle2.height / 2);
             const bounceAngle = normalizedRelativeIntersectionY * Math.PI / 4;
             
-            const speed = Math.min(MAX_BALL_SPEED, Math.abs(ball.dx) + Math.abs(normalizedRelativeIntersectionY) * 2);
+            const currentSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+            const speed = Math.min(MAX_BALL_SPEED, currentSpeed + Math.abs(normalizedRelativeIntersectionY) * 120);
             ball.dx = -speed * Math.cos(bounceAngle);
             ball.dy = speed * -Math.sin(bounceAngle);
             
@@ -1410,7 +1529,7 @@ function updateBall() {
         }
     }
     
-    if (ball.x > canvas.width) {
+    if (ball.x > baseWidth) {
         player1Score++;
         if (player1Score >= WINNING_SCORE) {
             gameState = 'gameover';
@@ -1434,8 +1553,8 @@ function updateTitleStars() {
     titleStars.forEach(star => {
         star.z -= star.speed * 10;
         if (star.z <= 0) {
-            star.x = Math.random() * canvas.width;
-            star.y = Math.random() * canvas.height;
+            star.x = Math.random() * baseWidth;
+            star.y = Math.random() * baseHeight;
             star.z = 1000;
             star.speed = Math.random() * 0.5 + 0.1;
         }
@@ -1446,12 +1565,12 @@ function drawOptionsMenu() {
     // Background
     if (currentTheme === 'spatial') {
         ctx.fillStyle = '#000011';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, baseWidth, baseHeight);
         
         // Draw warp speed stars
         titleStars.forEach(star => {
-            const x = (star.x - canvas.width / 2) * (1000 / star.z) + canvas.width / 2;
-            const y = (star.y - canvas.height / 2) * (1000 / star.z) + canvas.height / 2;
+            const x = (star.x - baseWidth / 2) * (1000 / star.z) + baseWidth / 2;
+            const y = (star.y - baseHeight / 2) * (1000 / star.z) + baseHeight / 2;
             const size = (1 - star.z / 1000) * 3;
             const opacity = 1 - star.z / 1000;
             
@@ -1459,7 +1578,7 @@ function drawOptionsMenu() {
             ctx.fillRect(x, y, size, size);
         });
     } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, baseWidth, baseHeight);
     }
     
     // Title
@@ -1474,13 +1593,13 @@ function drawOptionsMenu() {
         ctx.fillStyle = '#fff';
     }
     
-    ctx.fillText('OPTIONS', canvas.width / 2, 80);
+    ctx.fillText('OPTIONS', baseWidth / 2, 80);
     ctx.shadowBlur = 0;
     
     // Back instruction
     ctx.font = '16px Courier New';
     ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-    ctx.fillText('ESC TO BACK', canvas.width / 2, 110);
+    ctx.fillText('ESC TO BACK', baseWidth / 2, 110);
     
     if (settingControls) {
         drawControlSetting();
@@ -1514,6 +1633,13 @@ function drawOptionsMenu() {
         label: 'POINTS FOR VICTORY:',
         value: WINNING_SCORE.toString(),
         type: 'winningScore'
+    });
+    
+    // Resolution setting
+    options.push({
+        label: 'RESOLUTION:',
+        value: currentResolution.toUpperCase(),
+        type: 'resolution'
     });
     
     // Desktop-only control settings
@@ -1553,7 +1679,7 @@ function drawOptionsMenu() {
         } else {
             ctx.fillStyle = '#fff';
         }
-        ctx.fillText(option.label, canvas.width / 2 - 20, y);
+        ctx.fillText(option.label, baseWidth / 2 - 20, y);
         ctx.shadowBlur = 0;
         
         // Draw arrows for changeable values
@@ -1567,7 +1693,7 @@ function drawOptionsMenu() {
             
             // Calculate arrow positions based on text width
             const textWidth = ctx.measureText(option.value).width;
-            const centerX = canvas.width / 2 + 80;
+            const centerX = baseWidth / 2 + 80;
             const arrowSpacing = 20;
             
             ctx.fillText('<', centerX - textWidth/2 - arrowSpacing, y);
@@ -1576,7 +1702,7 @@ function drawOptionsMenu() {
         
         // Draw option value
         ctx.textAlign = 'center';
-        ctx.fillText(option.value, canvas.width / 2 + 80, y);
+        ctx.fillText(option.value, baseWidth / 2 + 80, y);
     });
     
     // Draw hint box for options menu
@@ -1598,13 +1724,13 @@ function drawOptionsMenu() {
     
     const hint = menuHints.options[hintIndex] || "";
     if (hint) {
-        ctx.fillText(hint, canvas.width / 2, hintY);
+        ctx.fillText(hint, baseWidth / 2, hintY);
         
         // Draw hint box border
         const hintWidth = ctx.measureText(hint).width + 20;
         ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(0, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.3)';
         ctx.lineWidth = 1;
-        ctx.strokeRect(canvas.width / 2 - hintWidth / 2, hintY - 15, hintWidth, 25);
+        ctx.strokeRect(baseWidth / 2 - hintWidth / 2, hintY - 15, hintWidth, 25);
     }
 }
 
@@ -1617,22 +1743,26 @@ function drawControlSetting() {
     const action = controlBeingSet.includes('up') ? 'UP' : 
                    controlBeingSet.includes('down') ? 'DOWN' : 'SHOOT';
     
-    ctx.fillText(`PRESS KEY FOR ${player} ${action}`, canvas.width / 2, canvas.height / 2 - 30);
+    ctx.fillText(`PRESS KEY FOR ${player} ${action}`, baseWidth / 2, baseHeight / 2 - 30);
     
     ctx.font = '20px Courier New';
-    ctx.fillText('ESC TO CANCEL', canvas.width / 2, canvas.height / 2 + 30);
+    ctx.fillText('ESC TO CANCEL', baseWidth / 2, baseHeight / 2 + 30);
 }
 
 function drawTitleScreen() {
+    // Apply resolution scaling
+    ctx.save();
+    ctx.scale(activeResolution.scale, activeResolution.scale);
+    
     // Background
     if (currentTheme === 'spatial') {
         ctx.fillStyle = '#000011';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, baseWidth, baseHeight);
         
         // Draw warp speed stars
         titleStars.forEach(star => {
-            const x = (star.x - canvas.width / 2) * (1000 / star.z) + canvas.width / 2;
-            const y = (star.y - canvas.height / 2) * (1000 / star.z) + canvas.height / 2;
+            const x = (star.x - baseWidth / 2) * (1000 / star.z) + baseWidth / 2;
+            const y = (star.y - baseHeight / 2) * (1000 / star.z) + baseHeight / 2;
             const size = (1 - star.z / 1000) * 3;
             const opacity = 1 - star.z / 1000;
             
@@ -1640,7 +1770,7 @@ function drawTitleScreen() {
             ctx.fillRect(x, y, size, size);
         });
     } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, baseWidth, baseHeight);
     }
     
     // Show mobile orientation warning
@@ -1650,10 +1780,10 @@ function drawTitleScreen() {
         
         // Background overlay
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, baseWidth, baseHeight);
         
         // Rotation icon
-        ctx.translate(canvas.width / 2, canvas.height / 2 - 60);
+        ctx.translate(baseWidth / 2, baseHeight / 2 - 60);
         ctx.strokeStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
         ctx.lineWidth = 3;
         
@@ -1680,21 +1810,22 @@ function drawTitleScreen() {
         ctx.font = 'bold 30px Courier New';
         ctx.textAlign = 'center';
         ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-        ctx.fillText('ROTATE DEVICE', canvas.width / 2, canvas.height / 2 + 40);
+        ctx.fillText('ROTATE DEVICE', baseWidth / 2, baseHeight / 2 + 40);
         
         ctx.font = '20px Courier New';
-        ctx.fillText('FOR LANDSCAPE MODE', canvas.width / 2, canvas.height / 2 + 70);
+        ctx.fillText('FOR LANDSCAPE MODE', baseWidth / 2, baseHeight / 2 + 70);
         
         // Still allow starting in portrait if they want
         ctx.font = '16px Courier New';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.fillText('or tap to continue anyway', canvas.width / 2, canvas.height / 2 + 110);
+        ctx.fillText('or tap to continue anyway', baseWidth / 2, baseHeight / 2 + 110);
         
         // Don't return - still show the menu underneath
     }
     
     if (inOptionsMenu) {
         drawOptionsMenu();
+        ctx.restore();
         return;
     }
     
@@ -1710,7 +1841,7 @@ function drawTitleScreen() {
         ctx.fillStyle = '#fff';
     }
     
-    ctx.fillText('PINGPONG WARS', canvas.width / 2, 100);
+    ctx.fillText('PINGPONG WARS', baseWidth / 2, 100);
     ctx.shadowBlur = 0;
     
     // Press Enter text (or tap for mobile)
@@ -1721,7 +1852,7 @@ function drawTitleScreen() {
         ctx.fillStyle = '#fff';
     }
     const startText = isMobile ? 'TAP TO PLAY' : 'PRESS ENTER TO PLAY';
-    ctx.fillText(startText, canvas.width / 2, 150);
+    ctx.fillText(startText, baseWidth / 2, 150);
     
     // Menu options - only 4 main options
     const baseY = 190;
@@ -1755,7 +1886,7 @@ function drawTitleScreen() {
         } else {
             ctx.fillStyle = '#fff';
         }
-        ctx.fillText(option.label, canvas.width / 2 - 70, option.y);
+        ctx.fillText(option.label, baseWidth / 2 - 70, option.y);
         ctx.shadowBlur = 0;
         
         // Draw arrows (except for OPTIONS)
@@ -1774,7 +1905,7 @@ function drawTitleScreen() {
             
             // Calculate arrow positions based on text width
             const textWidth = ctx.measureText(option.value).width;
-            const centerX = canvas.width / 2 + 30;
+            const centerX = baseWidth / 2 + 30;
             const arrowSpacing = isMobile ? 35 : 20;
             
             ctx.fillText('<', centerX - textWidth/2 - arrowSpacing, option.y);
@@ -1788,7 +1919,7 @@ function drawTitleScreen() {
         
         // Draw option value
         ctx.textAlign = 'center';
-        ctx.fillText(option.value, canvas.width / 2 + 30, option.y);
+        ctx.fillText(option.value, baseWidth / 2 + 30, option.y);
     });
     
     // Draw hint box
@@ -1804,13 +1935,15 @@ function drawTitleScreen() {
     
     // Draw hint text
     const hint = menuHints.main[menuSelection];
-    ctx.fillText(hint, canvas.width / 2, hintY);
+    ctx.fillText(hint, baseWidth / 2, hintY);
     
     // Draw hint box border
     const hintWidth = ctx.measureText(hint).width + 20;
     ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(0, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(canvas.width / 2 - hintWidth / 2, hintY - 15, hintWidth, 25);
+    ctx.strokeRect(baseWidth / 2 - hintWidth / 2, hintY - 15, hintWidth, 25);
+    
+    ctx.restore();
 }
 
 function drawLasers() {
@@ -1966,8 +2099,8 @@ function drawScore() {
         ctx.fillStyle = '#fff';
     }
     
-    ctx.fillText(player1Score, canvas.width / 4, 60);
-    ctx.fillText(player2Score, 3 * canvas.width / 4, 60);
+    ctx.fillText(player1Score, baseWidth / 4, 60);
+    ctx.fillText(player2Score, 3 * baseWidth / 4, 60);
     ctx.shadowBlur = 0;
 }
 
@@ -1975,8 +2108,8 @@ function drawCenterLine() {
     if (currentTheme === 'spatial') {
         ctx.setLineDash([5, 15]);
         ctx.beginPath();
-        ctx.moveTo(canvas.width / 2, 0);
-        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.moveTo(baseWidth / 2, 0);
+        ctx.lineTo(baseWidth / 2, baseHeight);
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -1985,8 +2118,8 @@ function drawCenterLine() {
     } else {
         ctx.setLineDash([5, 15]);
         ctx.beginPath();
-        ctx.moveTo(canvas.width / 2, 0);
-        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.moveTo(baseWidth / 2, 0);
+        ctx.lineTo(baseWidth / 2, baseHeight);
         ctx.strokeStyle = '#fff';
         ctx.stroke();
         ctx.setLineDash([]);
@@ -1996,7 +2129,7 @@ function drawCenterLine() {
 function drawPause() {
     // Semi-transparent overlay
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, baseWidth, baseHeight);
     
     // Pause text
     ctx.font = 'bold 48px Courier New';
@@ -2010,7 +2143,7 @@ function drawPause() {
         ctx.fillStyle = '#fff';
     }
     
-    ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2 - 40);
+    ctx.fillText('PAUSED', baseWidth / 2, baseHeight / 2 - 40);
     ctx.shadowBlur = 0;
     
     // Instructions
@@ -2018,11 +2151,11 @@ function drawPause() {
     ctx.fillStyle = currentTheme === 'spatial' ? '#0ff' : '#fff';
     
     if (isMobile) {
-        ctx.fillText('TAP HERE - Resume Game', canvas.width / 2, canvas.height / 2 + 20);
-        ctx.fillText('TAP HERE - Quit to Menu', canvas.width / 2, canvas.height / 2 + 50);
+        ctx.fillText('TAP HERE - Resume Game', baseWidth / 2, baseHeight / 2 + 20);
+        ctx.fillText('TAP HERE - Quit to Menu', baseWidth / 2, baseHeight / 2 + 50);
     } else {
-        ctx.fillText('ENTER - Resume Game', canvas.width / 2, canvas.height / 2 + 20);
-        ctx.fillText('ESC - Quit to Menu', canvas.width / 2, canvas.height / 2 + 50);
+        ctx.fillText('ENTER - Resume Game', baseWidth / 2, baseHeight / 2 + 20);
+        ctx.fillText('ESC - Quit to Menu', baseWidth / 2, baseHeight / 2 + 50);
     }
 }
 
@@ -2039,7 +2172,7 @@ function drawGameState() {
             ctx.fillStyle = '#fff';
         }
         
-        ctx.fillText('PRESS ENTER TO START', canvas.width / 2, canvas.height / 2);
+        ctx.fillText('PRESS ENTER TO START', baseWidth / 2, baseHeight / 2);
         ctx.shadowBlur = 0;
     } else if (gameState === 'gameover') {
         ctx.font = '36px Courier New';
@@ -2054,10 +2187,10 @@ function drawGameState() {
         }
         
         const winner = player1Score >= WINNING_SCORE ? 'PLAYER 1' : 'PLAYER 2';
-        ctx.fillText(`${winner} WINS!`, canvas.width / 2, canvas.height / 2 - 40);
+        ctx.fillText(`${winner} WINS!`, baseWidth / 2, baseHeight / 2 - 40);
         ctx.font = '24px Courier New';
         const continueText = isMobile ? 'TAP ANYWHERE TO CONTINUE' : 'PRESS ENTER TO PLAY AGAIN';
-        ctx.fillText(continueText, canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText(continueText, baseWidth / 2, baseHeight / 2 + 20);
         ctx.shadowBlur = 0;
     }
 }
@@ -2073,13 +2206,13 @@ function drawTouchZones() {
     // Draw touch zone dividers
     ctx.beginPath();
     // Horizontal center line for up/down
-    ctx.moveTo(0, canvas.height / 2);
-    ctx.lineTo(canvas.width, canvas.height / 2);
+    ctx.moveTo(0, baseHeight / 2);
+    ctx.lineTo(baseWidth, baseHeight / 2);
     
     // Vertical line for player separation (2 player mode)
     if (playerMode === '2player') {
-        ctx.moveTo(canvas.width / 2, 0);
-        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.moveTo(baseWidth / 2, 0);
+        ctx.lineTo(baseWidth / 2, baseHeight);
     }
     
     ctx.stroke();
@@ -2087,20 +2220,24 @@ function drawTouchZones() {
     // Draw laser zones in wars mode
     if (gameMode === 'wars') {
         ctx.strokeStyle = currentTheme === 'spatial' ? 'rgba(255, 255, 0, 0.2)' : 'rgba(255, 255, 255, 0.3)';
-        ctx.strokeRect(canvas.width / 2 - 100, 0, 200, canvas.height);
+        ctx.strokeRect(baseWidth / 2 - 100, 0, 200, baseHeight);
     }
     
     ctx.restore();
 }
 
 function drawReady() {
+    // Apply resolution scaling
+    ctx.save();
+    ctx.scale(activeResolution.scale, activeResolution.scale);
+    
     // Background
     if (currentTheme === 'spatial') {
         ctx.fillStyle = '#000011';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, baseWidth, baseHeight);
         drawStarfield();
     } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, baseWidth, baseHeight);
     }
     
     drawCenterLine();
@@ -2124,23 +2261,41 @@ function drawReady() {
         ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
     }
     
-    ctx.fillText('READY!', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('READY!', baseWidth / 2, baseHeight / 2);
     ctx.shadowBlur = 0;
     
     // Transition to playing after 2 seconds
     if (elapsed >= 2000) {
         gameState = 'playing';
     }
+    
+    ctx.restore();
+}
+
+function drawFPS() {
+    if (!showFPS) return;
+    
+    ctx.save();
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fillText(`FPS: ${fps}`, baseWidth - 10, 20);
+    ctx.fillText(`Res: ${activeResolution.width}x${activeResolution.height}`, baseWidth - 10, 40);
+    ctx.restore();
 }
 
 function draw() {
+    // Apply resolution scaling to canvas
+    ctx.save();
+    ctx.scale(activeResolution.scale, activeResolution.scale);
+    
     if (currentTheme === 'spatial') {
         // Dark space background
         ctx.fillStyle = '#000011';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, baseWidth, baseHeight);
         drawStarfield();
     } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, baseWidth, baseHeight);
     }
     
     drawCenterLine();
@@ -2163,9 +2318,39 @@ function draw() {
     if (isPaused) {
         drawPause();
     }
+    
+    ctx.restore();
+    
+    // Draw FPS counter last (without scaling)
+    drawFPS();
 }
 
-function gameLoop() {
+function gameLoop(currentTime) {
+    // Calculate delta time and FPS
+    if (!lastFrameTime) {
+        lastFrameTime = currentTime;
+    }
+    
+    deltaTime = currentTime - lastFrameTime;
+    
+    // Frame rate limiting - skip frame if too fast
+    if (deltaTime < FRAME_TIME) {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+    
+    // Update FPS counter
+    frameCount++;
+    if (currentTime - lastFpsUpdate >= 1000) {
+        fps = frameCount;
+        frameCount = 0;
+        lastFpsUpdate = currentTime;
+    }
+    
+    lastFrameTime = currentTime;
+    
+    // Cap delta time to prevent huge jumps
+    deltaTime = Math.min(deltaTime, FRAME_TIME * 2);
     if (gameState === 'title') {
         if (currentTheme === 'spatial') {
             updateTitleStars();
@@ -2194,4 +2379,4 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+requestAnimationFrame(gameLoop);
