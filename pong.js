@@ -16,12 +16,15 @@ const BALL_SIZE = 10;
 const PADDLE_SPEED = 5;
 const INITIAL_BALL_SPEED = 5;
 const MAX_BALL_SPEED = 15;
-const WINNING_SCORE = 5;
+let WINNING_SCORE = parseInt(localStorage.getItem('winningScore') || '5');
 
 // Canvas sizing
 let gameScale = 1;
 const baseWidth = 800;
 const baseHeight = 400;
+
+// Mobile orientation check
+let orientationWarningShown = false;
 
 function resizeCanvas() {
     const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
@@ -32,8 +35,8 @@ function resizeCanvas() {
         maxWidth = window.innerWidth;
         maxHeight = window.innerHeight;
     } else {
-        // Normal mode with padding
-        maxWidth = window.innerWidth - 40;
+        // Normal mode - use full width
+        maxWidth = window.innerWidth;
         maxHeight = window.innerHeight - 200;
     }
     
@@ -46,6 +49,11 @@ function resizeCanvas() {
     canvas.height = baseHeight;
     canvas.style.width = (baseWidth * gameScale) + 'px';
     canvas.style.height = (baseHeight * gameScale) + 'px';
+    
+    // Check mobile orientation
+    if (isMobile && window.innerWidth < window.innerHeight && !orientationWarningShown) {
+        orientationWarningShown = true;
+    }
 }
 
 // Call resize on load and window resize
@@ -62,14 +70,34 @@ let aiDifficulty = localStorage.getItem('aiDifficulty') || 'normal';
 let particleEffects = localStorage.getItem('particleEffects') || (isMobile || isMac ? 'low' : 'high');
 
 // Title screen state
-let menuSelection = 0; // 0 = theme, 1 = mode, 2 = players, 3 = difficulty (1 player only), 4 = particles
+let menuSelection = 0; // 0 = theme, 1 = mode, 2 = players, 3 = options
+let inOptionsMenu = false;
+let optionsMenuSelection = 0;
 const menuOptions = {
     theme: ['classic', 'spatial'],
     mode: ['pong', 'wars'],
     players: ['1player', '2player'],
     difficulty: ['easy', 'normal', 'hard'],
-    particles: ['low', 'high']
+    particles: ['low', 'high'],
+    winningScore: [3, 5, 7, 10, 15, 20]
 };
+
+// Custom controls
+let customControls = {
+    player1: {
+        up: localStorage.getItem('p1_up') || 'q',
+        down: localStorage.getItem('p1_down') || 'a',
+        shoot: localStorage.getItem('p1_shoot') || 's'
+    },
+    player2: {
+        up: localStorage.getItem('p2_up') || 'p',
+        down: localStorage.getItem('p2_down') || 'l',
+        shoot: localStorage.getItem('p2_shoot') || 'k'
+    }
+};
+
+let settingControls = false;
+let controlBeingSet = null;
 
 // Title screen stars
 const titleStars = [];
@@ -370,22 +398,7 @@ window.addEventListener('load', () => {
 });
 
 function updateLaserDisplay() {
-    const p1Laser = document.getElementById('p1-laser');
-    const p2Laser = document.getElementById('p2-laser');
-    const warsInfo = document.getElementById('wars-info');
-    const mobileLaser = document.getElementById('mobile-laser');
-    
-    if (gameMode === 'wars') {
-        if (p1Laser) p1Laser.style.display = 'block';
-        if (p2Laser) p2Laser.style.display = 'block';
-        if (warsInfo) warsInfo.style.display = 'block';
-        if (mobileLaser) mobileLaser.style.display = 'block';
-    } else {
-        if (p1Laser) p1Laser.style.display = 'none';
-        if (p2Laser) p2Laser.style.display = 'none';
-        if (warsInfo) warsInfo.style.display = 'none';
-        if (mobileLaser) mobileLaser.style.display = 'none';
-    }
+    // No longer needed as instructions removed
 }
 
 document.addEventListener('keydown', (e) => {
@@ -396,10 +409,10 @@ document.addEventListener('keydown', (e) => {
     } else if (e.key === 'Enter' && (gameState === 'waiting' || gameState === 'gameover')) {
         gameState = 'title';
     } else if (gameState === 'playing' && gameMode === 'wars') {
-        // Handle laser shooting
-        if (e.key.toLowerCase() === 's' && !lasers.player1 && !paddleShake.paddle1.active) {
+        // Handle laser shooting with custom controls
+        if (e.key.toLowerCase() === customControls.player1.shoot && !lasers.player1 && !paddleShake.paddle1.active) {
             shootLaser('player1');
-        } else if (e.key.toLowerCase() === 'k' && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
+        } else if (e.key.toLowerCase() === customControls.player2.shoot && !lasers.player2 && !paddleShake.paddle2.active && playerMode === '2player') {
             shootLaser('player2');
         }
     }
@@ -618,7 +631,48 @@ function handleMenuOptionChange(direction) {
 }
 
 function handleTitleInput(e) {
-    const maxSelection = playerMode === '1player' ? 4 : 3; // Added particles option
+    if (settingControls) {
+        if (e.key === 'Escape') {
+            settingControls = false;
+            controlBeingSet = null;
+        } else if (e.key.length === 1) {
+            // Set the control
+            const key = e.key.toLowerCase();
+            if (controlBeingSet.startsWith('p1')) {
+                if (controlBeingSet === 'p1_up') {
+                    customControls.player1.up = key;
+                    localStorage.setItem('p1_up', key);
+                } else if (controlBeingSet === 'p1_down') {
+                    customControls.player1.down = key;
+                    localStorage.setItem('p1_down', key);
+                } else if (controlBeingSet === 'p1_shoot') {
+                    customControls.player1.shoot = key;
+                    localStorage.setItem('p1_shoot', key);
+                }
+            } else {
+                if (controlBeingSet === 'p2_up') {
+                    customControls.player2.up = key;
+                    localStorage.setItem('p2_up', key);
+                } else if (controlBeingSet === 'p2_down') {
+                    customControls.player2.down = key;
+                    localStorage.setItem('p2_down', key);
+                } else if (controlBeingSet === 'p2_shoot') {
+                    customControls.player2.shoot = key;
+                    localStorage.setItem('p2_shoot', key);
+                }
+            }
+            settingControls = false;
+            controlBeingSet = null;
+        }
+        return;
+    }
+    
+    if (inOptionsMenu) {
+        handleOptionsInput(e);
+        return;
+    }
+    
+    const maxSelection = 3; // Only 4 main menu options
     
     switch(e.key) {
         case 'ArrowUp':
@@ -639,29 +693,6 @@ function handleTitleInput(e) {
                 playerMode = playerMode === '1player' ? '2player' : '1player';
                 localStorage.setItem('playerMode', playerMode);
                 updateControlDisplay();
-                // Reset menu selection if switching from 1player to 2player while on difficulty
-                if (menuSelection === 3 && playerMode === '2player') {
-                    menuSelection = 2;
-                }
-            } else if (menuSelection === 3) {
-                if (playerMode === '1player') {
-                    const difficulties = ['easy', 'normal', 'hard'];
-                    const currentIndex = difficulties.indexOf(aiDifficulty);
-                    aiDifficulty = difficulties[(currentIndex + 2) % 3]; // +2 to go left
-                    localStorage.setItem('aiDifficulty', aiDifficulty);
-                } else {
-                    // Particle effects for 2 player mode
-                    particleEffects = particleEffects === 'low' ? 'high' : 'low';
-                    localStorage.setItem('particleEffects', particleEffects);
-                    createStars();
-                    createTitleStars();
-                }
-            } else if (menuSelection === 4 && playerMode === '1player') {
-                // Particle effects for 1 player mode
-                particleEffects = particleEffects === 'low' ? 'high' : 'low';
-                localStorage.setItem('particleEffects', particleEffects);
-                createStars();
-                createTitleStars();
             }
             break;
         case 'ArrowRight':
@@ -676,46 +707,163 @@ function handleTitleInput(e) {
                 playerMode = playerMode === '1player' ? '2player' : '1player';
                 localStorage.setItem('playerMode', playerMode);
                 updateControlDisplay();
-                // Reset menu selection if switching from 1player to 2player while on difficulty
-                if (menuSelection === 3 && playerMode === '2player') {
-                    menuSelection = 2;
-                }
-            } else if (menuSelection === 3) {
-                if (playerMode === '1player') {
-                    const difficulties = ['easy', 'normal', 'hard'];
-                    const currentIndex = difficulties.indexOf(aiDifficulty);
-                    aiDifficulty = difficulties[(currentIndex + 1) % 3];
-                    localStorage.setItem('aiDifficulty', aiDifficulty);
-                } else {
-                    // Particle effects for 2 player mode
-                    particleEffects = particleEffects === 'low' ? 'high' : 'low';
-                    localStorage.setItem('particleEffects', particleEffects);
-                    createStars();
-                    createTitleStars();
-                }
-            } else if (menuSelection === 4 && playerMode === '1player') {
-                // Particle effects for 1 player mode
-                particleEffects = particleEffects === 'low' ? 'high' : 'low';
-                localStorage.setItem('particleEffects', particleEffects);
-                createStars();
-                createTitleStars();
             }
             break;
         case 'Enter':
-            gameState = 'waiting';
-            startGame();
+            if (menuSelection === 3) {
+                // Enter options menu
+                inOptionsMenu = true;
+                optionsMenuSelection = 0;
+            } else {
+                gameState = 'waiting';
+                startGame();
+            }
             break;
     }
 }
 
-function updateControlDisplay() {
-    if (playerMode === '1player') {
-        document.getElementById('player2-controls').style.display = 'none';
-        document.getElementById('ai-controls').style.display = 'block';
-    } else {
-        document.getElementById('player2-controls').style.display = 'block';
-        document.getElementById('ai-controls').style.display = 'none';
+function handleOptionsInput(e) {
+    const maxSelection = playerMode === '1player' ? (isMobile ? 2 : 4) : (isMobile ? 1 : 3);
+    
+    switch(e.key) {
+        case 'Escape':
+            inOptionsMenu = false;
+            break;
+        case 'ArrowUp':
+            optionsMenuSelection = Math.max(0, optionsMenuSelection - 1);
+            break;
+        case 'ArrowDown':
+            optionsMenuSelection = Math.min(maxSelection, optionsMenuSelection + 1);
+            break;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            const direction = e.key === 'ArrowLeft' ? -1 : 1;
+            let currentOption = optionsMenuSelection;
+            
+            // Adjust for 1 player vs 2 player mode
+            if (playerMode === '2player' && !isMobile) {
+                if (currentOption > 0) currentOption++; // Skip difficulty
+            }
+            
+            if (currentOption === 0 && playerMode === '1player') {
+                // Difficulty
+                const difficulties = ['easy', 'normal', 'hard'];
+                const currentIndex = difficulties.indexOf(aiDifficulty);
+                aiDifficulty = difficulties[(currentIndex + direction + 3) % 3];
+                localStorage.setItem('aiDifficulty', aiDifficulty);
+            } else if ((currentOption === 1 && playerMode === '1player') || (currentOption === 0 && playerMode === '2player')) {
+                // Particles
+                particleEffects = particleEffects === 'low' ? 'high' : 'low';
+                localStorage.setItem('particleEffects', particleEffects);
+                createStars();
+                createTitleStars();
+            } else if ((currentOption === 2 && playerMode === '1player') || (currentOption === 1 && playerMode === '2player')) {
+                // Winning score
+                const scores = menuOptions.winningScore;
+                const currentIndex = scores.indexOf(WINNING_SCORE);
+                let newIndex = (currentIndex + direction + scores.length) % scores.length;
+                WINNING_SCORE = scores[newIndex];
+                localStorage.setItem('winningScore', WINNING_SCORE.toString());
+            }
+            break;
+        case 'Enter':
+            let currentOptIdx = optionsMenuSelection;
+            if (playerMode === '2player' && !isMobile) {
+                if (currentOptIdx > 0) currentOptIdx++; // Skip difficulty
+            }
+            
+            if (!isMobile) {
+                if ((currentOptIdx === 3 && playerMode === '1player') || (currentOptIdx === 2 && playerMode === '2player')) {
+                    // Set controls P1
+                    showControlsMenu('player1');
+                } else if ((currentOptIdx === 4 && playerMode === '1player') || (currentOptIdx === 3 && playerMode === '2player')) {
+                    // Set controls P2
+                    showControlsMenu('player2');
+                }
+            }
+            break;
     }
+}
+
+function showControlsMenu(player) {
+    // Create a submenu for control settings
+    let controlsMenuSelection = 0;
+    
+    // Override the normal draw function temporarily
+    const originalDraw = drawOptionsMenu;
+    drawOptionsMenu = function() {
+        // Background
+        if (currentTheme === 'spatial') {
+            ctx.fillStyle = '#000011';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Title
+        ctx.font = 'bold 30px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+        ctx.fillText(`${player.toUpperCase()} CONTROLS`, canvas.width / 2, 80);
+        
+        ctx.font = '16px Courier New';
+        ctx.fillText('PRESS KEY TO SET OR ESC TO BACK', canvas.width / 2, 120);
+        
+        const baseY = 180;
+        const spacing = 40;
+        const controls = player === 'player1' ? customControls.player1 : customControls.player2;
+        
+        const options = [
+            { label: 'UP:', value: controls.up.toUpperCase(), action: `${player === 'player1' ? 'p1' : 'p2'}_up` },
+            { label: 'DOWN:', value: controls.down.toUpperCase(), action: `${player === 'player1' ? 'p1' : 'p2'}_down` },
+            { label: 'SHOOT:', value: controls.shoot.toUpperCase(), action: `${player === 'player1' ? 'p1' : 'p2'}_shoot` }
+        ];
+        
+        options.forEach((option, index) => {
+            const y = baseY + spacing * index;
+            const isSelected = index === controlsMenuSelection;
+            
+            ctx.font = isSelected ? 'bold 20px Courier New' : '20px Courier New';
+            ctx.textAlign = 'right';
+            ctx.fillStyle = currentTheme === 'spatial' ? (isSelected ? '#ff0' : '#0ff') : '#fff';
+            ctx.fillText(option.label, canvas.width / 2 - 50, y);
+            
+            ctx.textAlign = 'center';
+            ctx.fillText(option.value, canvas.width / 2 + 50, y);
+            
+            if (isSelected) {
+                ctx.fillText('>', canvas.width / 2 - 100, y);
+            }
+        });
+    };
+    
+    // Override input handling
+    const originalHandler = handleOptionsInput;
+    handleOptionsInput = function(e) {
+        switch(e.key) {
+            case 'Escape':
+                drawOptionsMenu = originalDraw;
+                handleOptionsInput = originalHandler;
+                break;
+            case 'ArrowUp':
+                controlsMenuSelection = Math.max(0, controlsMenuSelection - 1);
+                break;
+            case 'ArrowDown':
+                controlsMenuSelection = Math.min(2, controlsMenuSelection + 1);
+                break;
+            case 'Enter':
+                const actions = [`${player === 'player1' ? 'p1' : 'p2'}_up`, 
+                               `${player === 'player1' ? 'p1' : 'p2'}_down`, 
+                               `${player === 'player1' ? 'p1' : 'p2'}_shoot`];
+                controlBeingSet = actions[controlsMenuSelection];
+                settingControls = true;
+                break;
+        }
+    };
+}
+
+function updateControlDisplay() {
+    // No longer needed as instructions removed
 }
 
 function startGame() {
@@ -851,10 +999,10 @@ function updatePaddles() {
     // Player 1 controls (only if not shaking)
     if (!paddleShake.paddle1.active) {
         paddle1.dy = 0;
-        if ((keys['q'] || touchControls.player1Up) && paddle1.y > 0) {
+        if ((keys[customControls.player1.up] || touchControls.player1Up) && paddle1.y > 0) {
             paddle1.dy = -PADDLE_SPEED;
         }
-        if ((keys['a'] || touchControls.player1Down) && paddle1.y < canvas.height - PADDLE_HEIGHT) {
+        if ((keys[customControls.player1.down] || touchControls.player1Down) && paddle1.y < canvas.height - PADDLE_HEIGHT) {
             paddle1.dy = PADDLE_SPEED;
         }
     } else {
@@ -865,10 +1013,10 @@ function updatePaddles() {
         // Player 2 controls (only if not shaking)
         if (!paddleShake.paddle2.active) {
             paddle2.dy = 0;
-            if ((keys['p'] || touchControls.player2Up) && paddle2.y > 0) {
+            if ((keys[customControls.player2.up] || touchControls.player2Up) && paddle2.y > 0) {
                 paddle2.dy = -PADDLE_SPEED;
             }
-            if ((keys['l'] || touchControls.player2Down) && paddle2.y < canvas.height - PADDLE_HEIGHT) {
+            if ((keys[customControls.player2.down] || touchControls.player2Down) && paddle2.y < canvas.height - PADDLE_HEIGHT) {
                 paddle2.dy = PADDLE_SPEED;
             }
         } else {
@@ -1016,6 +1164,159 @@ function updateTitleStars() {
     });
 }
 
+function drawOptionsMenu() {
+    // Background
+    if (currentTheme === 'spatial') {
+        ctx.fillStyle = '#000011';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw warp speed stars
+        titleStars.forEach(star => {
+            const x = (star.x - canvas.width / 2) * (1000 / star.z) + canvas.width / 2;
+            const y = (star.y - canvas.height / 2) * (1000 / star.z) + canvas.height / 2;
+            const size = (1 - star.z / 1000) * 3;
+            const opacity = 1 - star.z / 1000;
+            
+            ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+            ctx.fillRect(x, y, size, size);
+        });
+    } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Title
+    ctx.font = 'bold 40px Courier New';
+    ctx.textAlign = 'center';
+    
+    if (currentTheme === 'spatial') {
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#0ff';
+        ctx.fillStyle = '#0ff';
+    } else {
+        ctx.fillStyle = '#fff';
+    }
+    
+    ctx.fillText('OPTIONS', canvas.width / 2, 80);
+    ctx.shadowBlur = 0;
+    
+    // Back instruction
+    ctx.font = '16px Courier New';
+    ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+    ctx.fillText('ESC TO BACK', canvas.width / 2, 120);
+    
+    if (settingControls) {
+        drawControlSetting();
+        return;
+    }
+    
+    // Options
+    const baseY = 160;
+    const spacing = 35;
+    
+    const options = [];
+    
+    // Add difficulty for 1 player mode
+    if (playerMode === '1player') {
+        options.push({ 
+            label: 'DIFFICULTY:', 
+            value: aiDifficulty.toUpperCase(),
+            type: 'difficulty'
+        });
+    }
+    
+    // Always show particles
+    options.push({ 
+        label: 'PARTICLES:', 
+        value: particleEffects.toUpperCase(),
+        type: 'particles'
+    });
+    
+    // Points for victory
+    options.push({
+        label: 'POINTS FOR VICTORY:',
+        value: WINNING_SCORE.toString(),
+        type: 'winningScore'
+    });
+    
+    // Desktop-only control settings
+    if (!isMobile) {
+        options.push({
+            label: 'SET CONTROLS PLAYER 1:',
+            value: 'ENTER >',
+            type: 'controls_p1'
+        });
+        
+        options.push({
+            label: 'SET CONTROLS PLAYER 2:',
+            value: 'ENTER >',
+            type: 'controls_p2'
+        });
+    }
+    
+    options.forEach((option, index) => {
+        const y = baseY + spacing * index;
+        const isSelected = index === optionsMenuSelection;
+        
+        // Set font based on selection
+        if (currentTheme === 'classic' && isSelected) {
+            ctx.font = 'bold 18px Courier New';
+        } else {
+            ctx.font = '18px Courier New';
+        }
+        
+        // Draw option label
+        ctx.textAlign = 'right';
+        if (currentTheme === 'spatial') {
+            ctx.fillStyle = isSelected ? '#ff0' : '#0ff';
+            if (isSelected) {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ff0';
+            }
+        } else {
+            ctx.fillStyle = '#fff';
+        }
+        ctx.fillText(option.label, canvas.width / 2 - 20, y);
+        ctx.shadowBlur = 0;
+        
+        // Draw arrows for changeable values
+        if (option.type !== 'controls_p1' && option.type !== 'controls_p2') {
+            ctx.textAlign = 'center';
+            if (currentTheme === 'spatial') {
+                ctx.fillStyle = isSelected ? '#ff0' : '#0ff';
+            } else {
+                ctx.fillStyle = '#fff';
+            }
+            
+            // Calculate arrow positions based on text width
+            const textWidth = ctx.measureText(option.value).width;
+            const centerX = canvas.width / 2 + 80;
+            const arrowSpacing = 20;
+            
+            ctx.fillText('<', centerX - textWidth/2 - arrowSpacing, y);
+            ctx.fillText('>', centerX + textWidth/2 + arrowSpacing, y);
+        }
+        
+        // Draw option value
+        ctx.textAlign = 'center';
+        ctx.fillText(option.value, canvas.width / 2 + 80, y);
+    });
+}
+
+function drawControlSetting() {
+    ctx.font = 'bold 30px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+    
+    const player = controlBeingSet.startsWith('p1') ? 'PLAYER 1' : 'PLAYER 2';
+    const action = controlBeingSet.includes('up') ? 'UP' : 
+                   controlBeingSet.includes('down') ? 'DOWN' : 'SHOOT';
+    
+    ctx.fillText(`PRESS KEY FOR ${player} ${action}`, canvas.width / 2, canvas.height / 2 - 30);
+    
+    ctx.font = '20px Courier New';
+    ctx.fillText('ESC TO CANCEL', canvas.width / 2, canvas.height / 2 + 30);
+}
+
 function drawTitleScreen() {
     // Background
     if (currentTheme === 'spatial') {
@@ -1034,6 +1335,22 @@ function drawTitleScreen() {
         });
     } else {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Show mobile orientation warning
+    if (isMobile && window.innerWidth < window.innerHeight) {
+        ctx.font = 'bold 24px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+        ctx.fillText('ROTATE YOUR DEVICE', canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = '18px Courier New';
+        ctx.fillText('FOR BEST EXPERIENCE', canvas.width / 2, canvas.height / 2 + 20);
+        return;
+    }
+    
+    if (inOptionsMenu) {
+        drawOptionsMenu();
+        return;
     }
     
     // Title
@@ -1061,39 +1378,16 @@ function drawTitleScreen() {
     const startText = isMobile ? 'TAP HERE TO PLAY' : 'PRESS ENTER TO PLAY';
     ctx.fillText(startText, canvas.width / 2, 160);
     
-    // Add "TAP TO START" text for mobile
-    if (isMobile) {
-        ctx.font = '18px Courier New';
-        ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-        ctx.fillText('TAP ANYWHERE TO START', canvas.width / 2, 380);
-    }
-    
-    // Menu options - adjust spacing to fit all options
+    // Menu options - only 4 main options
     const baseY = 220;
-    const spacing = playerMode === '1player' ? 32 : 36; // Tighter spacing for 1-player mode
+    const spacing = 40;
     
     const options = [
         { label: 'THEME:', value: currentTheme === 'classic' ? 'CLASSIC' : 'SPATIAL', y: baseY },
         { label: 'MODE:', value: gameMode === 'pong' ? 'PONG MODE' : 'WARS MODE', y: baseY + spacing },
-        { label: 'PLAYERS:', value: playerMode === '1player' ? '1 PLAYER' : '2 PLAYERS', y: baseY + spacing * 2 }
+        { label: 'PLAYERS:', value: playerMode === '1player' ? '1 PLAYER' : '2 PLAYERS', y: baseY + spacing * 2 },
+        { label: 'OPTIONS:', value: 'ENTER >', y: baseY + spacing * 3 }
     ];
-    
-    // Add difficulty option only for 1 player mode
-    if (playerMode === '1player') {
-        options.push({ 
-            label: 'DIFFICULTY:', 
-            value: aiDifficulty.toUpperCase(), 
-            y: baseY + spacing * 3 
-        });
-    }
-    
-    // Add particle effects option
-    const particleIndex = playerMode === '1player' ? 4 : 3;
-    options.push({ 
-        label: 'PARTICLES:', 
-        value: particleEffects.toUpperCase(), 
-        y: baseY + spacing * particleIndex 
-    });
     
     options.forEach((option, index) => {
         const isSelected = index === menuSelection;
@@ -1119,34 +1413,37 @@ function drawTitleScreen() {
         ctx.fillText(option.label, canvas.width / 2 - 70, option.y);
         ctx.shadowBlur = 0;
         
-        // Draw arrows (larger on mobile for easier tapping)
-        ctx.textAlign = 'center';
-        if (currentTheme === 'spatial') {
-            ctx.fillStyle = isSelected ? '#ff0' : '#0ff';
-        } else {
-            ctx.fillStyle = '#fff';
-        }
-        
-        // Make arrows bigger on mobile
-        if (isMobile && isSelected) {
-            ctx.font = 'bold 28px Courier New';
-        }
-        
-        // Calculate arrow positions based on text width
-        const textWidth = ctx.measureText(option.value).width;
-        const centerX = canvas.width / 2 + 30;
-        const arrowSpacing = isMobile ? 35 : 20;
-        
-        ctx.fillText('<', centerX - textWidth/2 - arrowSpacing, option.y);
-        ctx.fillText('>', centerX + textWidth/2 + arrowSpacing, option.y);
-        
-        // Reset font if it was changed
-        if (isMobile && isSelected) {
-            ctx.font = '20px Courier New';
+        // Draw arrows (except for OPTIONS)
+        if (index < 3) {
+            ctx.textAlign = 'center';
+            if (currentTheme === 'spatial') {
+                ctx.fillStyle = isSelected ? '#ff0' : '#0ff';
+            } else {
+                ctx.fillStyle = '#fff';
+            }
+            
+            // Make arrows bigger on mobile
+            if (isMobile && isSelected) {
+                ctx.font = 'bold 28px Courier New';
+            }
+            
+            // Calculate arrow positions based on text width
+            const textWidth = ctx.measureText(option.value).width;
+            const centerX = canvas.width / 2 + 30;
+            const arrowSpacing = isMobile ? 35 : 20;
+            
+            ctx.fillText('<', centerX - textWidth/2 - arrowSpacing, option.y);
+            ctx.fillText('>', centerX + textWidth/2 + arrowSpacing, option.y);
+            
+            // Reset font if it was changed
+            if (isMobile && isSelected) {
+                ctx.font = '20px Courier New';
+            }
         }
         
         // Draw option value
-        ctx.fillText(option.value, centerX, option.y);
+        ctx.textAlign = 'center';
+        ctx.fillText(option.value, canvas.width / 2 + 30, option.y);
     });
 }
 
