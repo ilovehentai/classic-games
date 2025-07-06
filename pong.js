@@ -30,20 +30,44 @@ function resizeCanvas() {
     const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
     
     let maxWidth, maxHeight;
-    if (isFullscreen) {
-        // In fullscreen, use full viewport
+    
+    // For mobile devices
+    if (isMobile) {
+        // Use full viewport
         maxWidth = window.innerWidth;
         maxHeight = window.innerHeight;
-    } else {
-        // Normal mode - use full width
+        
+        // If in portrait mode, still use full dimensions but show rotation message
+        if (window.innerWidth < window.innerHeight) {
+            // In portrait, maximize usage of available width
+            const portraitScale = Math.min(maxWidth / baseHeight, maxHeight / baseWidth);
+            // Rotate the game 90 degrees for better fit
+            if (portraitScale * baseHeight <= maxWidth && portraitScale * baseWidth <= maxHeight) {
+                // Could fit rotated, but we'll still encourage landscape
+                gameScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight) * 0.9;
+            } else {
+                gameScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight) * 0.9;
+            }
+        } else {
+            // Landscape mode - use full screen
+            gameScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
+        }
+    } else if (isFullscreen) {
+        // Desktop fullscreen
         maxWidth = window.innerWidth;
-        maxHeight = window.innerHeight - 200;
+        maxHeight = window.innerHeight;
+        gameScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
+    } else {
+        // Desktop normal mode
+        maxWidth = window.innerWidth;
+        maxHeight = window.innerHeight - 100;
+        gameScale = Math.min(maxWidth / baseWidth, maxHeight / baseHeight);
     }
     
-    // Calculate scale to fit screen while maintaining aspect ratio
-    const scaleX = maxWidth / baseWidth;
-    const scaleY = maxHeight / baseHeight;
-    gameScale = Math.min(scaleX, scaleY);
+    // Ensure minimum scale for visibility
+    if (isMobile && gameScale < 0.5) {
+        gameScale = 0.5;
+    }
     
     canvas.width = baseWidth;
     canvas.height = baseHeight;
@@ -441,48 +465,65 @@ function bufferToWave(buffer) {
 // Create robot voice for "Ready!"
 function createReadySound() {
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const duration = 0.8;
+    const duration = 1.0;
     const sampleRate = audioContext.sampleRate;
     const buffer = audioContext.createBuffer(1, duration * sampleRate, sampleRate);
     const data = buffer.getChannelData(0);
     
-    // Generate robotic "Ready!" sound
-    // Using formant synthesis approach
-    const syllables = [
-        { start: 0, end: 0.3, freq: 200, mod: 50 },    // "Rea"
-        { start: 0.3, end: 0.6, freq: 250, mod: 80 }   // "dy!"
+    // Generate clearer robotic "Ready!" sound using vocoder-style synthesis
+    const phonemes = [
+        { start: 0.1, end: 0.35, type: 'r', freq: 150 },     // "R" sound
+        { start: 0.35, end: 0.5, type: 'eh', freq: 280 },    // "eh" sound
+        { start: 0.5, end: 0.65, type: 'd', freq: 200 },     // "d" sound  
+        { start: 0.65, end: 0.85, type: 'ee', freq: 320 }    // "ee" sound
     ];
     
     for (let i = 0; i < data.length; i++) {
         const t = i / sampleRate;
         let sample = 0;
         
-        // Find which syllable we're in
-        for (const syl of syllables) {
-            if (t >= syl.start && t < syl.end) {
-                const syllableT = (t - syl.start) / (syl.end - syl.start);
+        for (const phoneme of phonemes) {
+            if (t >= phoneme.start && t < phoneme.end) {
+                const localT = (t - phoneme.start) / (phoneme.end - phoneme.start);
                 
-                // Envelope
-                const env = Math.sin(syllableT * Math.PI) * 0.8;
+                // Envelope with sharper attack for clarity
+                let env = 1;
+                if (localT < 0.1) env = localT / 0.1;
+                else if (localT > 0.8) env = (1 - localT) / 0.2;
+                env *= 0.8;
                 
-                // Base frequency with vibrato
-                const vibrato = Math.sin(t * 20) * 5;
-                const baseFreq = syl.freq + vibrato;
+                if (phoneme.type === 'r' || phoneme.type === 'd') {
+                    // Consonants - use noise + tone
+                    const noise = (Math.random() - 0.5) * 0.3;
+                    const tone = Math.sin(2 * Math.PI * phoneme.freq * t);
+                    sample += (noise + tone * 0.5) * env;
+                    
+                    // Add formants for clarity
+                    sample += Math.sin(2 * Math.PI * phoneme.freq * 2 * t) * env * 0.3;
+                    sample += Math.sin(2 * Math.PI * phoneme.freq * 3 * t) * env * 0.2;
+                } else {
+                    // Vowels - use harmonics
+                    const fundamental = Math.sin(2 * Math.PI * phoneme.freq * t);
+                    const harmonic2 = Math.sin(2 * Math.PI * phoneme.freq * 2 * t);
+                    const harmonic3 = Math.sin(2 * Math.PI * phoneme.freq * 3 * t);
+                    
+                    sample += fundamental * env * 0.5;
+                    sample += harmonic2 * env * 0.3;
+                    sample += harmonic3 * env * 0.2;
+                }
                 
-                // Harmonics for robotic sound
-                sample += Math.sin(2 * Math.PI * baseFreq * t) * env * 0.3;
-                sample += Math.sin(2 * Math.PI * baseFreq * 2 * t) * env * 0.2;
-                sample += Math.sin(2 * Math.PI * baseFreq * 3 * t) * env * 0.1;
-                
-                // Modulation for robotic effect
-                sample *= (1 + Math.sin(2 * Math.PI * syl.mod * t) * 0.5);
-                
-                // Add some noise
-                sample += (Math.random() - 0.5) * env * 0.05;
+                // Robotic vocoder effect
+                const carrier = Math.sin(2 * Math.PI * 50 * t);
+                sample = sample * (0.7 + carrier * 0.3);
             }
         }
         
-        data[i] = sample;
+        // Low-pass filter simulation for smoother sound
+        if (i > 0) {
+            data[i] = sample * 0.7 + data[i-1] * 0.3;
+        } else {
+            data[i] = sample;
+        }
     }
     
     // Create audio element
@@ -1505,13 +1546,52 @@ function drawTitleScreen() {
     
     // Show mobile orientation warning
     if (isMobile && window.innerWidth < window.innerHeight) {
-        ctx.font = 'bold 24px Courier New';
+        // Larger, clearer message for portrait mode
+        ctx.save();
+        
+        // Background overlay
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Rotation icon
+        ctx.translate(canvas.width / 2, canvas.height / 2 - 60);
+        ctx.strokeStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+        ctx.lineWidth = 3;
+        
+        // Draw phone icon
+        ctx.strokeRect(-20, -30, 40, 60);
+        
+        // Draw rotation arrow
+        ctx.beginPath();
+        ctx.arc(0, 50, 30, -Math.PI/2, 0);
+        ctx.stroke();
+        
+        // Arrow head
+        ctx.beginPath();
+        ctx.moveTo(30, 50);
+        ctx.lineTo(25, 45);
+        ctx.lineTo(25, 55);
+        ctx.closePath();
+        ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+        ctx.fill();
+        
+        ctx.restore();
+        
+        // Text message
+        ctx.font = 'bold 30px Courier New';
         ctx.textAlign = 'center';
         ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-        ctx.fillText('ROTATE YOUR DEVICE', canvas.width / 2, canvas.height / 2 - 20);
-        ctx.font = '18px Courier New';
-        ctx.fillText('FOR BEST EXPERIENCE', canvas.width / 2, canvas.height / 2 + 20);
-        return;
+        ctx.fillText('ROTATE DEVICE', canvas.width / 2, canvas.height / 2 + 40);
+        
+        ctx.font = '20px Courier New';
+        ctx.fillText('FOR LANDSCAPE MODE', canvas.width / 2, canvas.height / 2 + 70);
+        
+        // Still allow starting in portrait if they want
+        ctx.font = '16px Courier New';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.fillText('or tap to continue anyway', canvas.width / 2, canvas.height / 2 + 110);
+        
+        // Don't return - still show the menu underneath
     }
     
     if (inOptionsMenu) {
@@ -1934,7 +2014,12 @@ function draw() {
     drawScore();
     drawPaddle(paddle1);
     drawPaddle(paddle2);
-    drawBall();
+    
+    // Don't draw ball during game over
+    if (gameState !== 'gameover') {
+        drawBall();
+    }
+    
     if (gameMode === 'wars') {
         drawLasers();
     }
