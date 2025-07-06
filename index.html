@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="screen-orientation" content="landscape">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Pong Game</title>
     <style>
         body {
@@ -15,13 +18,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            overflow: hidden;
+        }
+        
+        html {
+            height: -webkit-fill-available;
         }
         
         #gameCanvas {
             border: 2px solid #fff;
             display: block;
-            max-width: 100%;
+            max-width: 100vw;
+            max-height: 100vh;
+            width: auto;
             height: auto;
+            touch-action: none;
         }
         
         @media (max-width: 768px) {
@@ -30,9 +44,30 @@
             }
             
             #gameCanvas {
-                width: 100%;
+                width: auto;
+                height: auto;
                 max-width: 100vw;
+                max-height: 100vh;
                 touch-action: none;
+            }
+        }
+        
+        /* Portrait mode specific */
+        @media (max-width: 768px) and (orientation: portrait) {
+            #gameCanvas {
+                max-width: 95vw;
+                margin: auto;
+            }
+        }
+        
+        /* Landscape mode specific */
+        @media (max-width: 768px) and (orientation: landscape) {
+            body {
+                justify-content: center;
+            }
+            
+            #gameCanvas {
+                max-height: 95vh;
             }
         }
         
