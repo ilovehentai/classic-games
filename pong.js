@@ -528,31 +528,52 @@ function setupTouchControls() {
             const rect = canvas.getBoundingClientRect();
             const endX = (touch.clientX - rect.left) / gameScale;
             const endY = (touch.clientY - rect.top) / gameScale;
-            const deltaX = endX - menuTouchStart.x;
-            const deltaY = endY - menuTouchStart.y;
-            const deltaTime = Date.now() - menuTouchStart.time;
             
-            // Detect swipes
-            if (deltaTime < 300) { // Quick swipe
-                if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
-                    // Vertical swipe - navigate menu
-                    const maxSelection = playerMode === '1player' ? 4 : 3;
-                    if (deltaY < 0) {
-                        menuSelection = Math.max(0, menuSelection - 1);
-                    } else {
-                        menuSelection = Math.min(maxSelection, menuSelection + 1);
-                    }
-                } else if (Math.abs(deltaX) > 30) {
-                    // Horizontal swipe - change option
-                    handleMenuOptionChange(deltaX < 0 ? 'left' : 'right');
-                }
-            } else if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
-                // Tap - check if tapping start area
-                if (endY > 350) {
-                    gameState = 'waiting';
-                    startGame();
-                }
+            // Handle taps on menu items
+            const baseY = 220;
+            const spacing = playerMode === '1player' ? 32 : 36;
+            const options = [];
+            
+            // Build options array with positions
+            options.push({ y: baseY, index: 0 });
+            options.push({ y: baseY + spacing, index: 1 });
+            options.push({ y: baseY + spacing * 2, index: 2 });
+            if (playerMode === '1player') {
+                options.push({ y: baseY + spacing * 3, index: 3 });
+                options.push({ y: baseY + spacing * 4, index: 4 });
+            } else {
+                options.push({ y: baseY + spacing * 3, index: 3 });
             }
+            
+            // Check if tapped on any menu option
+            let tappedOption = -1;
+            options.forEach(opt => {
+                if (Math.abs(endY - opt.y) < 20) {
+                    tappedOption = opt.index;
+                }
+            });
+            
+            if (tappedOption !== -1) {
+                menuSelection = tappedOption;
+                
+                // Check if tapped on arrows
+                const centerX = canvas.width / 2 + 30;
+                const textWidth = 150; // Approximate width
+                const arrowSpacing = 35;
+                
+                if (endX < centerX - textWidth/2) {
+                    // Tapped left arrow
+                    handleMenuOptionChange('left');
+                } else if (endX > centerX + textWidth/2) {
+                    // Tapped right arrow
+                    handleMenuOptionChange('right');
+                }
+            } else if (endY > 350) {
+                // Start game
+                gameState = 'waiting';
+                startGame();
+            }
+            
             menuTouchStart = null;
         }
         
@@ -1040,13 +1061,11 @@ function drawTitleScreen() {
     const startText = isMobile ? 'TAP HERE TO PLAY' : 'PRESS ENTER TO PLAY';
     ctx.fillText(startText, canvas.width / 2, 160);
     
-    // Draw tap area indicator for mobile
+    // Add "TAP TO START" text for mobile
     if (isMobile) {
-        ctx.strokeStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(canvas.width / 2 - 150, 350, 300, 40);
-        ctx.setLineDash([]);
+        ctx.font = '18px Courier New';
+        ctx.fillStyle = currentTheme === 'spatial' ? '#ff0' : '#fff';
+        ctx.fillText('TAP ANYWHERE TO START', canvas.width / 2, 380);
     }
     
     // Menu options - adjust spacing to fit all options
@@ -1100,7 +1119,7 @@ function drawTitleScreen() {
         ctx.fillText(option.label, canvas.width / 2 - 70, option.y);
         ctx.shadowBlur = 0;
         
-        // Draw arrows
+        // Draw arrows (larger on mobile for easier tapping)
         ctx.textAlign = 'center';
         if (currentTheme === 'spatial') {
             ctx.fillStyle = isSelected ? '#ff0' : '#0ff';
@@ -1108,12 +1127,23 @@ function drawTitleScreen() {
             ctx.fillStyle = '#fff';
         }
         
+        // Make arrows bigger on mobile
+        if (isMobile && isSelected) {
+            ctx.font = 'bold 28px Courier New';
+        }
+        
         // Calculate arrow positions based on text width
         const textWidth = ctx.measureText(option.value).width;
         const centerX = canvas.width / 2 + 30;
+        const arrowSpacing = isMobile ? 35 : 20;
         
-        ctx.fillText('<', centerX - textWidth/2 - 20, option.y);
-        ctx.fillText('>', centerX + textWidth/2 + 20, option.y);
+        ctx.fillText('<', centerX - textWidth/2 - arrowSpacing, option.y);
+        ctx.fillText('>', centerX + textWidth/2 + arrowSpacing, option.y);
+        
+        // Reset font if it was changed
+        if (isMobile && isSelected) {
+            ctx.font = '20px Courier New';
+        }
         
         // Draw option value
         ctx.fillText(option.value, centerX, option.y);
