@@ -335,6 +335,16 @@ const paddleShake = {
     paddle2: { active: false, startTime: 0 }
 };
 
+// Life points for wars mode
+const MAX_LIVES = 4;
+const lives = {
+    player1: MAX_LIVES,
+    player2: MAX_LIVES
+};
+
+// Victory sound flag to prevent multiple plays
+let victorySoundPlayed = false;
+
 // Get scaled values based on resolution
 function getScaled(value) {
     return value * activeResolution.scale;
@@ -641,6 +651,30 @@ try {
     console.log('Failed to load ready.mp3, using synthesized sound:', e);
     readySound = createReadySound();
 }
+
+// Victory sounds
+let player1WinsSound = new Audio();
+let player2WinsSound = new Audio();
+let gameOverSound = new Audio();
+
+// Load victory sounds
+player1WinsSound.src = 'player1wins.mp3';
+player1WinsSound.volume = 0.7;
+player1WinsSound.onerror = () => {
+    console.log('Failed to load player1wins.mp3');
+};
+
+player2WinsSound.src = 'player2wins.mp3';
+player2WinsSound.volume = 0.7;
+player2WinsSound.onerror = () => {
+    console.log('Failed to load player2wins.mp3');
+};
+
+gameOverSound.src = 'gameover.mp3';
+gameOverSound.volume = 0.7;
+gameOverSound.onerror = () => {
+    console.log('Failed to load gameover.mp3');
+};
 
 const keys = {};
 
@@ -1264,6 +1298,47 @@ function updateControlDisplay() {
     // No longer needed as instructions removed
 }
 
+function playVictorySound() {
+    // Only play once per game
+    if (victorySoundPlayed) return;
+    victorySoundPlayed = true;
+    
+    let winner;
+    
+    // Determine winner based on game mode and how the game ended
+    if (gameMode === 'wars') {
+        // In wars mode, could win by destroying opponent OR reaching score
+        if (lives.player1 <= 0) {
+            winner = 'player2';
+        } else if (lives.player2 <= 0) {
+            winner = 'player1';
+        } else {
+            // If both have lives, check score
+            winner = player1Score >= WINNING_SCORE ? 'player1' : 'player2';
+        }
+    } else {
+        // In pong mode, check who reached winning score
+        winner = player1Score >= WINNING_SCORE ? 'player1' : 'player2';
+    }
+    
+    // Play appropriate sound based on game mode and winner
+    if (playerMode === '1player') {
+        // Single player mode
+        if (winner === 'player1') {
+            player1WinsSound.cloneNode().play().catch(e => console.log('Victory sound failed:', e));
+        } else if (winner === 'player2') {
+            gameOverSound.cloneNode().play().catch(e => console.log('Game over sound failed:', e));
+        }
+    } else {
+        // Two player mode
+        if (winner === 'player1') {
+            player1WinsSound.cloneNode().play().catch(e => console.log('Player 1 wins sound failed:', e));
+        } else if (winner === 'player2') {
+            player2WinsSound.cloneNode().play().catch(e => console.log('Player 2 wins sound failed:', e));
+        }
+    }
+}
+
 function startGame() {
     player1Score = 0;
     player2Score = 0;
@@ -1273,9 +1348,20 @@ function startGame() {
     lasers.player2 = null;
     paddleShake.paddle1 = { active: false, startTime: 0 };
     paddleShake.paddle2 = { active: false, startTime: 0 };
+    // Reset lives for wars mode
+    lives.player1 = MAX_LIVES;
+    lives.player2 = MAX_LIVES;
+    // Reset victory sound flag
+    victorySoundPlayed = false;
 }
 
 function shootLaser(player) {
+    // Check if player has lives in wars mode
+    if (gameMode === 'wars') {
+        const playerLives = player === 'player1' ? lives.player1 : lives.player2;
+        if (playerLives <= 0) return;
+    }
+    
     const paddle = player === 'player1' ? paddle1 : paddle2;
     const direction = player === 'player1' ? 1 : -1;
     
@@ -1358,7 +1444,20 @@ function updateLasers() {
             lasers.player1.y <= paddle2.y + paddle2.height) {
             
             lasers.player1 = null;
-            paddleShake.paddle2 = { active: true, startTime: Date.now() };
+            
+            // Decrease life in wars mode
+            if (gameMode === 'wars' && lives.player2 > 0) {
+                lives.player2--;
+                
+                // Only apply shake if player still has lives
+                if (lives.player2 > 0) {
+                    paddleShake.paddle2 = { active: true, startTime: Date.now() };
+                }
+            } else {
+                // Classic behavior for pong mode
+                paddleShake.paddle2 = { active: true, startTime: Date.now() };
+            }
+            
             hitSound.cloneNode().play().catch(e => console.log('Hit sound failed:', e));
         }
     }
@@ -1380,7 +1479,20 @@ function updateLasers() {
             lasers.player2.y <= paddle1.y + paddle1.height) {
             
             lasers.player2 = null;
-            paddleShake.paddle1 = { active: true, startTime: Date.now() };
+            
+            // Decrease life in wars mode
+            if (gameMode === 'wars' && lives.player1 > 0) {
+                lives.player1--;
+                
+                // Only apply shake if player still has lives
+                if (lives.player1 > 0) {
+                    paddleShake.paddle1 = { active: true, startTime: Date.now() };
+                }
+            } else {
+                // Classic behavior for pong mode
+                paddleShake.paddle1 = { active: true, startTime: Date.now() };
+            }
+            
             hitSound.cloneNode().play().catch(e => console.log('Hit sound failed:', e));
         }
     }
@@ -1395,8 +1507,10 @@ function updateLasers() {
 }
 
 function updatePaddles() {
-    // Player 1 controls (only if not shaking)
-    if (!paddleShake.paddle1.active) {
+    // Player 1 controls (only if not shaking and has lives)
+    const player1CanMove = !paddleShake.paddle1.active && (gameMode !== 'wars' || lives.player1 > 0);
+    
+    if (player1CanMove) {
         paddle1.dy = 0;
         if ((keys[customControls.player1.up] || touchControls.player1Up) && paddle1.y > 0) {
             paddle1.dy = -PADDLE_SPEED;
@@ -1409,8 +1523,10 @@ function updatePaddles() {
     }
     
     if (playerMode === '2player') {
-        // Player 2 controls (only if not shaking)
-        if (!paddleShake.paddle2.active) {
+        // Player 2 controls (only if not shaking and has lives)
+        const player2CanMove = !paddleShake.paddle2.active && (gameMode !== 'wars' || lives.player2 > 0);
+        
+        if (player2CanMove) {
             paddle2.dy = 0;
             if ((keys[customControls.player2.up] || touchControls.player2Up) && paddle2.y > 0) {
                 paddle2.dy = -PADDLE_SPEED;
@@ -1422,7 +1538,9 @@ function updatePaddles() {
             paddle2.dy = 0;
         }
     } else {
-        if (!paddleShake.paddle2.active) {
+        const player2CanMove = !paddleShake.paddle2.active && (gameMode !== 'wars' || lives.player2 > 0);
+        
+        if (player2CanMove) {
             updateAI();
         } else {
             paddle2.dy = 0;
@@ -1533,6 +1651,7 @@ function updateBall() {
         player2Score++;
         if (player2Score >= WINNING_SCORE) {
             gameState = 'gameover';
+            playVictorySound();
         } else {
             resetBall();
         }
@@ -1542,6 +1661,7 @@ function updateBall() {
         player1Score++;
         if (player1Score >= WINNING_SCORE) {
             gameState = 'gameover';
+            playVictorySound();
         } else {
             resetBall();
         }
@@ -2002,6 +2122,12 @@ function drawLasers() {
 }
 
 function drawPaddle(paddle) {
+    // Don't draw paddle if it has no lives in wars mode
+    if (gameMode === 'wars') {
+        const playerLives = paddle === paddle1 ? lives.player1 : lives.player2;
+        if (playerLives <= 0) return;
+    }
+    
     ctx.save();
     
     // Apply shake effect
@@ -2113,6 +2239,42 @@ function drawScore() {
     ctx.shadowBlur = 0;
 }
 
+function drawLives() {
+    if (gameMode !== 'wars') return;
+    
+    ctx.font = '20px Courier New';
+    ctx.textAlign = 'center';
+    
+    // Draw life indicators as hearts or similar symbols
+    const heartSymbol = '♥';
+    const emptyHeartSymbol = '♡';
+    
+    // Player 1 lives
+    let player1LivesText = '';
+    for (let i = 0; i < MAX_LIVES; i++) {
+        player1LivesText += i < lives.player1 ? heartSymbol : emptyHeartSymbol;
+    }
+    
+    // Player 2 lives
+    let player2LivesText = '';
+    for (let i = 0; i < MAX_LIVES; i++) {
+        player2LivesText += i < lives.player2 ? heartSymbol : emptyHeartSymbol;
+    }
+    
+    if (currentTheme === 'spatial') {
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = '#f00';
+        ctx.fillStyle = '#f00';
+    } else {
+        ctx.fillStyle = '#fff';
+    }
+    
+    // Draw lives below scores
+    ctx.fillText(player1LivesText, baseWidth / 4, 90);
+    ctx.fillText(player2LivesText, 3 * baseWidth / 4, 90);
+    ctx.shadowBlur = 0;
+}
+
 function drawCenterLine() {
     if (currentTheme === 'spatial') {
         ctx.setLineDash([5, 15]);
@@ -2195,8 +2357,32 @@ function drawGameState() {
             ctx.fillStyle = '#fff';
         }
         
-        const winner = player1Score >= WINNING_SCORE ? 'PLAYER 1' : 'PLAYER 2';
-        ctx.fillText(`${winner} WINS!`, baseWidth / 2, baseHeight / 2 - 40);
+        let winner;
+        let gameOverText;
+        
+        if (gameMode === 'wars') {
+            // In wars mode, could win by destroying opponent OR reaching score
+            if (lives.player1 <= 0) {
+                winner = 'PLAYER 2';
+            } else if (lives.player2 <= 0) {
+                winner = 'PLAYER 1';
+            } else {
+                // If both have lives, check score
+                winner = player1Score >= WINNING_SCORE ? 'PLAYER 1' : 'PLAYER 2';
+            }
+        } else {
+            // In pong mode, check who reached winning score
+            winner = player1Score >= WINNING_SCORE ? 'PLAYER 1' : 'PLAYER 2';
+        }
+        
+        // Different text for single player mode
+        if (playerMode === '1player' && winner === 'PLAYER 2') {
+            gameOverText = 'GAME OVER';
+        } else {
+            gameOverText = `${winner} WINS!`;
+        }
+        
+        ctx.fillText(gameOverText, baseWidth / 2, baseHeight / 2 - 40);
         ctx.font = '24px Courier New';
         const continueText = isMobile ? 'TAP ANYWHERE TO CONTINUE' : 'PRESS ENTER TO PLAY AGAIN';
         ctx.fillText(continueText, baseWidth / 2, baseHeight / 2 + 20);
@@ -2309,6 +2495,7 @@ function draw() {
     
     drawCenterLine();
     drawScore();
+    drawLives();
     drawPaddle(paddle1);
     drawPaddle(paddle2);
     
@@ -2378,6 +2565,12 @@ function gameLoop(currentTime) {
             updateBall();
             if (gameMode === 'wars') {
                 updateLasers();
+                
+                // Check for life depletion in wars mode
+                if (lives.player1 <= 0 || lives.player2 <= 0) {
+                    gameState = 'gameover';
+                    playVictorySound();
+                }
             }
         }
         if (currentTheme === 'spatial') {
